@@ -1,0 +1,67 @@
+# ~/homelab-k8s-services/.gitmessage
+#
+# <type>[optional scope]: <description>
+#
+# [optional body]
+#
+# [optional footer(s)]
+#
+# --- COMMIT MESSAGE GUIDELINES ---
+#
+# Types:
+#   feat     - New feature or service
+#   fix      - Bug fixes
+#   docs     - Documentation only changes
+#   refactor - Code change that neither fixes bug nor adds feature
+#   chore    - Changes to build process or auxiliary tools
+#   platform - Platform/infrastructure services
+#   app      - Application services
+#   config   - Configuration changes
+#   security - Security-related changes
+#   ci       - CI/CD pipeline changes
+#
+# Scopes (examples):
+#   platform   - cert-manager, ingress-nginx, metallb, monitoring
+#   app        - gitea, vaultwarden, immich, open-webui
+#   docs       - documentation changes
+#   ci         - github actions, automation
+#   helm       - helm chart related
+#   kustomize  - kustomization changes
+#
+# Description:
+#   - Use imperative mood ("add" not "added" or "adds")
+#   - Don't capitalize first letter
+#   - No period at the end
+#   - Max 50 characters
+#
+# Body:
+#   - Wrap at 72 characters
+#   - Explain what and why, not how
+#   - Use bullet points with - or *
+#
+# Footer:
+#   - Reference issues: "Closes #123" or "Fixes #456"
+#   - Breaking changes: "BREAKING CHANGE: description"
+#
+# --- EXAMPLES ---
+#
+# feat(platform): add cert-manager with Let's Encrypt support
+#
+# feat(app): add gitea self-hosted git service
+#
+# - Configure PostgreSQL database
+# - Add persistent volume for repositories
+# - Include ingress with TLS termination
+# - Add backup configuration
+#
+# Closes #15
+#
+# fix(platform): resolve metallb IP pool conflict
+#
+# docs(gitea): add deployment and troubleshooting guide
+#
+# chore: update kubernetes manifests to v1.29
+#
+# security(vaultwarden): add network policies and RBAC
+#
+# BREAKING CHANGE: change ingress class from nginx to ingress-nginx
