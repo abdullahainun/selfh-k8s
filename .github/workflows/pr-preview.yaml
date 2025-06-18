@@ -8,22 +8,19 @@ on:
       - "apps/**"
       - "clusters/homelab/03-community/**"
 
-# Add permissions for commenting on PRs
 permissions:
   contents: read
   issues: write
   pull-requests: write
   actions: read
 
-# Remove KUBECONFIG_DATA - tidak perlu lagi karena kubectl sudah available di runner
 env:
   DOMAIN_GENERATOR_URL: "https://dg.homelab.local"
-  INTERNAL_SERVICE_IP: "10.10.10.101" # IP untuk load balancer/ingress
-  DOMAIN_PORT: "80"
+  # Note: INTERNAL_SERVICE_IP not needed since we're using service-to-service communication
 
 jobs:
   detect-changes:
-    runs-on: self-hosted # Changed from ubuntu-latest
+    runs-on: self-hosted
     outputs:
       services: ${{ steps.changes.outputs.services }}
       has-changes: ${{ steps.changes.outputs.has-changes }}
@@ -39,8 +36,9 @@ jobs:
           CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
           echo "Changed files: $CHANGED_FILES"
 
-          # Extract service names from changed paths
-          SERVICES=$(echo "$CHANGED_FILES" | grep -E '^apps/[^/]+/' | cut -d'/' -f2 | sort | uniq | tr '\n' ' ')
+          # Extract actual service names from changed paths - handles nested structure
+          # Pattern: apps/category/service/... -> extract "category/service"
+          SERVICES=$(echo "$CHANGED_FILES" | grep -E '^apps/[^/]+/[^/]+/' | cut -d'/' -f2,3 | sort | uniq | tr '\n' ' ')
           COMMUNITY_REFS=$(echo "$CHANGED_FILES" | grep -E '^clusters/homelab/03-community/' | sed 's|.*/||' | sed 's|\.yaml$||' | tr '\n' ' ')
 
           # Combine and deduplicate
@@ -59,14 +57,13 @@ jobs:
           echo "Detected services: $ALL_SERVICES_TRIMMED"
 
   preview-deploy:
-    runs-on: self-hosted # Changed from ubuntu-latest
+    runs-on: self-hosted
     needs: detect-changes
     if: github.event.action != 'closed' && needs.detect-changes.outputs.has-changes == 'true'
 
     steps:
       - uses: actions/checkout@v4
 
-      # Deploy each service sequentially instead of using matrix
       - name: Deploy services to preview
         run: |
           SERVICES="${{ needs.detect-changes.outputs.services }}"
@@ -80,47 +77,71 @@ jobs:
           # Initialize temp file for domain info
           > /tmp/preview-domains.txt
 
-          # Process each service
-          for SERVICE in $SERVICES; do
+          # Process each service (now in format "category/service")
+          for SERVICE_PATH in $SERVICES; do
             echo "========================================"
-            echo "Processing service: $SERVICE"
+            echo "Processing service path: $SERVICE_PATH"
             echo "========================================"
             
-            PREVIEW_NAMESPACE="preview-pr-$PR_NUMBER-$SERVICE"
+            # Extract category and service name
+            CATEGORY=$(echo "$SERVICE_PATH" | cut -d'/' -f1)
+            SERVICE_NAME=$(echo "$SERVICE_PATH" | cut -d'/' -f2)
+            
+            # Create sanitized namespace name (replace / with -)
+            SERVICE_NAMESPACE_NAME=$(echo "$SERVICE_PATH" | tr '/' '-')
+            PREVIEW_NAMESPACE="preview-pr-$PR_NUMBER-$SERVICE_NAMESPACE_NAME"
+            
+            echo "Category: $CATEGORY"
+            echo "Service Name: $SERVICE_NAME"
+            echo "Namespace: $PREVIEW_NAMESPACE"
             
             # Validate service structure
-            echo "Validating service: $SERVICE"
-            if [ ! -d "apps/$SERVICE" ]; then
-              echo "❌ Service directory apps/$SERVICE not found"
+            echo "Validating service: $SERVICE_PATH"
+            if [ ! -d "apps/$SERVICE_PATH" ]; then
+              echo "❌ Service directory apps/$SERVICE_PATH not found"
               continue
             fi
 
-            # Validate Kubernetes manifests (excluding kustomization files)
-            if [ -d "apps/$SERVICE/base" ]; then
-              echo "Validating base manifests..."
-              # Only validate actual Kubernetes resources, not kustomization files
-              find apps/$SERVICE/base -name "*.yaml" -not -name "kustomization.yaml" -exec kubectl apply --dry-run=client -f {} \; || {
-                echo "❌ Base manifest validation failed for $SERVICE"
-                continue
-              }
+            # Check for base directory
+            if [ -d "apps/$SERVICE_PATH/base" ]; then
+              echo "✅ Found base directory at apps/$SERVICE_PATH/base"
+              BASE_DIR="apps/$SERVICE_PATH/base"
+            else
+              echo "❌ No base directory found at apps/$SERVICE_PATH/base"
+              continue
             fi
 
-            if [ -d "apps/$SERVICE/overlays/dev" ]; then
+            # Check for overlay directory
+            OVERLAY_DIR=""
+            if [ -d "apps/$SERVICE_PATH/overlays/dev" ]; then
+              echo "✅ Found dev overlay at apps/$SERVICE_PATH/overlays/dev"
+              OVERLAY_DIR="apps/$SERVICE_PATH/overlays/dev"
+            else
+              echo "⚠️ No dev overlay found, will use base only"
+            fi
+
+            # Validate Kubernetes manifests
+            echo "Validating base manifests..."
+            find "$BASE_DIR" -name "*.yaml" -not -name "kustomization.yaml" -exec kubectl apply --dry-run=client -f {} \; || {
+              echo "❌ Base manifest validation failed for $SERVICE_PATH"
+              continue
+            }
+
+            if [ -n "$OVERLAY_DIR" ]; then
               echo "Validating dev overlay..."
-              cd apps/$SERVICE/overlays/dev
-              # Use kustomize to build and validate the final manifests
+              cd "$OVERLAY_DIR"
               if kustomize build . | kubectl apply --dry-run=client -f -; then
                 echo "✅ Dev overlay validation passed"
               else
-                echo "❌ Dev overlay validation failed for $SERVICE"
-                cd ../../../..
+                echo "❌ Dev overlay validation failed for $SERVICE_PATH"
+                cd - > /dev/null
                 continue
               fi
-              cd ../../../..
+              cd - > /dev/null
             fi
             
             # Deploy to preview environment
-            echo "Deploying $SERVICE to preview namespace: $PREVIEW_NAMESPACE"
+            echo "Deploying $SERVICE_PATH to preview namespace: $PREVIEW_NAMESPACE"
 
             # Create preview namespace
             kubectl create namespace $PREVIEW_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
@@ -131,100 +152,226 @@ jobs:
               echo "⚠️ Namespace may not be ready, but continuing..."
             }
 
-            # Verify namespace exists
-            kubectl get namespace $PREVIEW_NAMESPACE || {
-              echo "❌ Namespace $PREVIEW_NAMESPACE not found, skipping deployment"
-              continue
-            }
-
             # Label for easy cleanup
             kubectl label namespace $PREVIEW_NAMESPACE \
               preview=true \
               pr-number=$PR_NUMBER \
-              service=$SERVICE \
+              service="$SERVICE_NAMESPACE_NAME" \
               created-by=github-actions
 
             # Deploy service to preview namespace
             echo "Deploying manifests to namespace: $PREVIEW_NAMESPACE"
             
-            # Verify namespace exists before deploying
-            if ! kubectl get namespace $PREVIEW_NAMESPACE >/dev/null 2>&1; then
-              echo "❌ Namespace $PREVIEW_NAMESPACE not found, skipping deployment"
-              continue
-            fi
+            DEPLOYMENT_SUCCESS=false
+            DEPLOYMENT_ERROR=""
             
-            if [ -d "apps/$SERVICE/overlays/dev" ]; then
+            if [ -n "$OVERLAY_DIR" ]; then
               echo "Using kustomize overlay for deployment..."
-              cd apps/$SERVICE/overlays/dev
+              cd "$OVERLAY_DIR"
               
-              # Debug: show what kustomize builds
-              echo "=== Kustomize build output ==="
-              if ! kustomize build . > /tmp/kustomize-output.yaml; then
-                echo "❌ Kustomize build failed"
-                cd ../../../..
-                continue
-              fi
-              
-              cat /tmp/kustomize-output.yaml
-              
-              # Build with kustomize and set namespace
-              echo "=== Applying with namespace replacement ==="
-              
-              # Remove any existing namespace field and apply to specific namespace
-              if kustomize build . | \
-                 yq eval 'del(.metadata.namespace)' - | \
-                 kubectl apply -f - -n $PREVIEW_NAMESPACE; then
-                echo "✅ Kustomize deployment successful"
+              # Build with kustomize and apply to specific namespace
+              KUSTOMIZE_OUTPUT=$(kustomize build . 2>&1)
+              if [ $? -eq 0 ]; then
+                echo "✅ Kustomize build successful"
+                
+                # Apply the built manifests
+                APPLY_OUTPUT=$(echo "$KUSTOMIZE_OUTPUT" | yq eval 'del(.metadata.namespace)' - | kubectl apply -f - -n $PREVIEW_NAMESPACE 2>&1)
+                if [ $? -eq 0 ]; then
+                  echo "✅ Kustomize deployment successful"
+                  DEPLOYMENT_SUCCESS=true
+                else
+                  echo "❌ Kustomize deployment failed"
+                  DEPLOYMENT_ERROR="Kustomize apply failed: $APPLY_OUTPUT"
+                fi
               else
-                echo "❌ Kustomize deployment failed"
-                echo "=== Kustomize output ==="
-                kustomize build .
+                echo "❌ Kustomize build failed"
+                DEPLOYMENT_ERROR="Kustomize build failed: $KUSTOMIZE_OUTPUT"
               fi
               
-              cd ../../../..
+              cd - > /dev/null
             else
               echo "Using base manifests for deployment..."
-              # Apply base manifests directly to preview namespace
               echo "=== Applying base manifests ==="
               
-              for manifest_file in apps/$SERVICE/base/*.yaml; do
-                # Skip kustomization files
-                if [[ "$manifest_file" == *"kustomization.yaml" ]]; then
-                  continue
-                fi
-                
+              MANIFEST_ERRORS=""
+              APPLIED_COUNT=0
+              TOTAL_COUNT=0
+              
+              # Find all YAML files in base directory
+              while IFS= read -r -d '' manifest_file; do
+                TOTAL_COUNT=$((TOTAL_COUNT + 1))
                 echo "Applying: $manifest_file"
-                if kubectl apply -f "$manifest_file" -n $PREVIEW_NAMESPACE; then
+                
+                APPLY_OUTPUT=$(kubectl apply -f "$manifest_file" -n $PREVIEW_NAMESPACE 2>&1)
+                if [ $? -eq 0 ]; then
                   echo "✅ Applied $manifest_file successfully"
+                  APPLIED_COUNT=$((APPLIED_COUNT + 1))
                 else
                   echo "❌ Failed to apply $manifest_file"
+                  MANIFEST_ERRORS="$MANIFEST_ERRORS\n- $(basename "$manifest_file"): $APPLY_OUTPUT"
                 fi
-              done
+              done < <(find "$BASE_DIR" -name "*.yaml" -not -name "kustomization.yaml" -print0)
+              
+              if [ $APPLIED_COUNT -eq $TOTAL_COUNT ] && [ $TOTAL_COUNT -gt 0 ]; then
+                echo "✅ All base manifests applied successfully ($APPLIED_COUNT/$TOTAL_COUNT)"
+                DEPLOYMENT_SUCCESS=true
+              elif [ $APPLIED_COUNT -gt 0 ]; then
+                echo "⚠️ Partial deployment success ($APPLIED_COUNT/$TOTAL_COUNT)"
+                DEPLOYMENT_ERROR="Partial deployment failure. Applied $APPLIED_COUNT out of $TOTAL_COUNT manifests. Errors:$MANIFEST_ERRORS"
+              else
+                echo "❌ All base manifest deployments failed"
+                DEPLOYMENT_ERROR="All manifest deployments failed. Errors:$MANIFEST_ERRORS"
+              fi
+            fi
+
+            # Check deployment status before proceeding
+            if [ "$DEPLOYMENT_SUCCESS" = false ]; then
+              echo "💥 DEPLOYMENT FAILED - Skipping domain generation"
+              echo "Error details: $DEPLOYMENT_ERROR"
+              
+              # Store failure info for PR comment
+              echo "$SERVICE_PATH|DEPLOYMENT_FAILED|$DEPLOYMENT_ERROR|||" >> /tmp/preview-domains.txt
+              
+              # Show namespace events for debugging
+              echo "=== Namespace Events (for debugging) ==="
+              kubectl get events -n $PREVIEW_NAMESPACE --sort-by='.lastTimestamp' | tail -10 || echo "No events found"
+              
+              # Continue to next service (don't exit completely)
+              echo "⏭️ Moving to next service..."
+              continue
             fi
 
             # Check if resources were actually created
             echo "=== Checking created resources ==="
-            sleep 5  # Give time for resources to be created
+            sleep 10  # Give more time for resources to be created
             kubectl get all -n $PREVIEW_NAMESPACE
             
-            # Count resources to verify deployment
-            RESOURCE_COUNT=$(kubectl get all -n $PREVIEW_NAMESPACE --no-headers 2>/dev/null | wc -l)
-            echo "Resource count in namespace: $RESOURCE_COUNT"
-            
-            if [ "$RESOURCE_COUNT" -gt 0 ]; then
-              echo "✅ Resources successfully deployed to $PREVIEW_NAMESPACE"
+            # Verify that pods are running
+            echo "=== Verifying pod status ==="
+            POD_STATUS=$(kubectl get pods -n $PREVIEW_NAMESPACE --no-headers 2>/dev/null)
+            if [ -n "$POD_STATUS" ]; then
+              echo "Pod status:"
+              echo "$POD_STATUS"
+              
+              # Check for failed pods
+              FAILED_PODS=$(echo "$POD_STATUS" | grep -E "(Error|CrashLoopBackOff|ImagePullBackOff|Failed)" || true)
+              if [ -n "$FAILED_PODS" ]; then
+                echo "⚠️ Found failed pods:"
+                echo "$FAILED_PODS"
+                
+                # Get pod logs for debugging
+                echo "=== Failed Pod Logs ==="
+                kubectl get pods -n $PREVIEW_NAMESPACE --no-headers | grep -E "(Error|CrashLoopBackOff|ImagePullBackOff|Failed)" | while read pod_line; do
+                  POD_NAME=$(echo "$pod_line" | awk '{print $1}')
+                  echo "--- Logs for $POD_NAME ---"
+                  kubectl logs "$POD_NAME" -n $PREVIEW_NAMESPACE --tail=20 2>/dev/null || echo "Could not retrieve logs"
+                done
+              fi
             else
-              echo "⚠️ No resources found in $PREVIEW_NAMESPACE, but deployment may be in progress"
+              echo "⚠️ No pods found in namespace"
             fi
             
-            # Show events if there are issues
-            echo "=== Recent namespace events ==="
-            kubectl get events -n $PREVIEW_NAMESPACE --sort-by='.lastTimestamp' | tail -10 || echo "No events found"
-
+            # Extract service information from deployed resources (only if deployment succeeded)
+            echo "=== Extracting service information from manifests ==="
+            
+            # Get the actual service from the deployed resources
+            SERVICE_INFO=$(kubectl get service -n $PREVIEW_NAMESPACE -o json 2>/dev/null | jq -r '.items[0] // empty')
+            
+            if [ -n "$SERVICE_INFO" ] && [ "$SERVICE_INFO" != "null" ]; then
+              # Extract service details from deployed service
+              ACTUAL_SERVICE_NAME=$(echo "$SERVICE_INFO" | jq -r '.metadata.name')
+              ACTUAL_SERVICE_PORT=$(echo "$SERVICE_INFO" | jq -r '.spec.ports[0].port // 80')
+              ACTUAL_TARGET_PORT=$(echo "$SERVICE_INFO" | jq -r '.spec.ports[0].targetPort // .spec.ports[0].port // 80')
+              
+              echo "✅ Found deployed service:"
+              echo "  - Service Name: $ACTUAL_SERVICE_NAME"
+              echo "  - Service Port: $ACTUAL_SERVICE_PORT"
+              echo "  - Target Port: $ACTUAL_TARGET_PORT"
+              
+              # Construct internal service URL using actual service details
+              INTERNAL_SERVICE_URL="http://${ACTUAL_SERVICE_NAME}.${PREVIEW_NAMESPACE}:${ACTUAL_SERVICE_PORT}"
+              
+            else
+              echo "⚠️ No service found in deployed resources, checking manifests directly..."
+              
+              # Fallback: Parse manifests to extract service info
+              if [ -n "$OVERLAY_DIR" ]; then
+                cd "$OVERLAY_DIR"
+                MANIFEST_CONTENT=$(kustomize build . 2>/dev/null || echo "")
+                cd - > /dev/null
+              else
+                # Combine all base manifests
+                MANIFEST_CONTENT=""
+                find "$BASE_DIR" -name "*.yaml" -not -name "kustomization.yaml" | while read -r manifest_file; do
+                  echo "---" >> /tmp/combined_manifest.yaml
+                  cat "$manifest_file" >> /tmp/combined_manifest.yaml
+                done
+                MANIFEST_CONTENT=$(cat /tmp/combined_manifest.yaml 2>/dev/null || echo "")
+                rm -f /tmp/combined_manifest.yaml
+              fi
+              
+              if [ -n "$MANIFEST_CONTENT" ]; then
+                # Extract service info from manifest content
+                SERVICE_MANIFEST=$(echo "$MANIFEST_CONTENT" | yq eval 'select(.kind == "Service")' -)
+                
+                if [ -n "$SERVICE_MANIFEST" ] && [ "$SERVICE_MANIFEST" != "null" ]; then
+                  ACTUAL_SERVICE_NAME=$(echo "$SERVICE_MANIFEST" | yq eval '.metadata.name' -)
+                  ACTUAL_SERVICE_PORT=$(echo "$SERVICE_MANIFEST" | yq eval '.spec.ports[0].port // 80' -)
+                  
+                  echo "✅ Found service in manifests:"
+                  echo "  - Service Name: $ACTUAL_SERVICE_NAME"
+                  echo "  - Service Port: $ACTUAL_SERVICE_PORT"
+                  
+                  # Construct internal service URL
+                  INTERNAL_SERVICE_URL="http://${ACTUAL_SERVICE_NAME}.${PREVIEW_NAMESPACE}:${ACTUAL_SERVICE_PORT}"
+                else
+                  echo "❌ No service found in manifests - this deployment may be incomplete"
+                  DEPLOYMENT_ERROR="No Kubernetes Service found in manifests. The application may not be accessible externally."
+                  
+                  # Store failure info
+                  echo "$SERVICE_PATH|NO_SERVICE_FOUND|$DEPLOYMENT_ERROR|||" >> /tmp/preview-domains.txt
+                  continue
+                fi
+              else
+                echo "❌ Could not read manifest content"
+                DEPLOYMENT_ERROR="Could not parse manifests to extract service information."
+                
+                # Store failure info
+                echo "$SERVICE_PATH|MANIFEST_PARSE_ERROR|$DEPLOYMENT_ERROR|||" >> /tmp/preview-domains.txt
+                continue
+              fi
+            fi
+            
+            echo "Final internal service URL: $INTERNAL_SERVICE_URL"
+            
+            # Wait for service to be ready
+            echo "=== Waiting for service to be ready ==="
+            SERVICE_READY=false
+            for i in {1..12}; do  # Wait up to 2 minutes
+              if kubectl get service "$ACTUAL_SERVICE_NAME" -n $PREVIEW_NAMESPACE >/dev/null 2>&1; then
+                # Check if service has endpoints
+                ENDPOINTS=$(kubectl get endpoints "$ACTUAL_SERVICE_NAME" -n $PREVIEW_NAMESPACE -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || echo "")
+                if [ -n "$ENDPOINTS" ]; then
+                  echo "✅ Service is ready with endpoints: $ENDPOINTS"
+                  SERVICE_READY=true
+                  break
+                else
+                  echo "⏳ Service exists but no endpoints yet (attempt $i/12)"
+                fi
+              else
+                echo "⏳ Waiting for service to be created (attempt $i/12)"
+              fi
+              sleep 10
+            done
+            
+            if [ "$SERVICE_READY" = false ]; then
+              echo "⚠️ Service may not be fully ready, but proceeding with domain generation"
+              # Don't fail completely, but add warning to the comment
+              SERVICE_WARNING="Service may not be fully ready - please verify deployment status"
+            fi
+            
             # Wait for deployment to be ready
             echo "Waiting for deployment to be ready..."
-            
-            # Check if deployment exists first
             if kubectl get deployment -n $PREVIEW_NAMESPACE --no-headers 2>/dev/null | grep -q .; then
               kubectl wait --for=condition=available deployment --all -n $PREVIEW_NAMESPACE --timeout=300s || {
                 echo "⚠️ Deployment may not be ready yet, but continuing..."
@@ -233,19 +380,21 @@ jobs:
               echo "⚠️ No deployments found in namespace, skipping wait"
             fi
             
-            # Show deployment status
-            echo "Current deployment status:"
-            kubectl get all -n $PREVIEW_NAMESPACE || echo "No resources found yet"
+            # Generate preview domain with extracted service information
+            echo "Generating domain for service: $SERVICE_NAMESPACE_NAME"
+            echo "Using extracted service details:"
+            echo "  - Service Name: $ACTUAL_SERVICE_NAME"
+            echo "  - Namespace: $PREVIEW_NAMESPACE" 
+            echo "  - Internal URL: $INTERNAL_SERVICE_URL"
             
-            # Generate preview domain
-            echo "Generating domain for service: $SERVICE"
             DOMAIN_RESPONSE=$(curl -s -X POST "$DOMAIN_GENERATOR_URL/api/domains/generate" \
               -H "Content-Type: application/json" \
               -d "{
-                \"serviceName\": \"$SERVICE\",
+                \"serviceName\": \"$SERVICE_NAMESPACE_NAME\",
                 \"namespace\": \"$PREVIEW_NAMESPACE\",
-                \"internalService\": \"$INTERNAL_SERVICE_IP\",
-                \"port\": $DOMAIN_PORT,
+                \"internalService\": \"$INTERNAL_SERVICE_URL\",
+                \"actualServiceName\": \"$ACTUAL_SERVICE_NAME\",
+                \"servicePort\": $ACTUAL_SERVICE_PORT,
                 \"useZeroTrust\": true,
                 \"pullRequestId\": \"$PR_NUMBER\",
                 \"branch\": \"$BRANCH_NAME\"
@@ -259,32 +408,35 @@ jobs:
             PREVIEW_URL=$(echo "$DOMAIN_RESPONSE" | jq -r '.domain.url // empty')
 
             if [ "$SUCCESS" = "true" ] && [ -n "$PREVIEW_DOMAIN" ]; then
-              # Parse domain ID from response
               DOMAIN_ID=$(echo "$DOMAIN_RESPONSE" | jq -r '.domain.id // empty')
               echo "✅ Preview domain created: $PREVIEW_DOMAIN"
               echo "✅ Preview URL: $PREVIEW_URL"
-              echo "✅ Domain ID: $DOMAIN_ID"
               
-              # Store domain info for comment AND cleanup (include domain ID)
-              echo "$SERVICE|$PREVIEW_DOMAIN|$PREVIEW_URL|$DOMAIN_ID" >> /tmp/preview-domains.txt
+              # Store domain info with actual service details and any warnings
+              DOMAIN_INFO_LINE="$SERVICE_PATH|$PREVIEW_DOMAIN|$PREVIEW_URL|$DOMAIN_ID|$ACTUAL_SERVICE_NAME|$ACTUAL_SERVICE_PORT"
+              if [ -n "$SERVICE_WARNING" ]; then
+                DOMAIN_INFO_LINE="$DOMAIN_INFO_LINE|$SERVICE_WARNING"
+              fi
+              echo "$DOMAIN_INFO_LINE" >> /tmp/preview-domains.txt
               
-              # Also label the namespace with domain ID for cleanup
               kubectl label namespace $PREVIEW_NAMESPACE \
                 domain-id=$DOMAIN_ID \
                 --overwrite
             else
-              echo "❌ Failed to create preview domain for $SERVICE"
-              echo "API Response: $DOMAIN_RESPONSE"
-              # Store fallback info (no domain ID)
-              echo "$SERVICE|pr-$PR_NUMBER-$SERVICE.abdullahainun.site|https://pr-$PR_NUMBER-$SERVICE.abdullahainun.site|" >> /tmp/preview-domains.txt
+              echo "❌ Failed to create preview domain for $SERVICE_PATH"
+              FALLBACK_INFO_LINE="$SERVICE_PATH|pr-$PR_NUMBER-$SERVICE_NAMESPACE_NAME.abdullahainun.site|https://pr-$PR_NUMBER-$SERVICE_NAMESPACE_NAME.abdullahainun.site||$ACTUAL_SERVICE_NAME|$ACTUAL_SERVICE_PORT"
+              if [ -n "$SERVICE_WARNING" ]; then
+                FALLBACK_INFO_LINE="$FALLBACK_INFO_LINE|$SERVICE_WARNING"
+              fi
+              echo "$FALLBACK_INFO_LINE" >> /tmp/preview-domains.txt
             fi
             
-            echo "✅ Completed deployment for service: $SERVICE"
+            echo "✅ Completed deployment for service: $SERVICE_PATH"
             echo ""
           done
 
   comment-preview:
-    runs-on: self-hosted # Changed from ubuntu-latest
+    runs-on: self-hosted
     needs: [detect-changes, preview-deploy]
     if: always() && github.event.action != 'closed' && needs.detect-changes.outputs.has-changes == 'true'
 
@@ -296,39 +448,98 @@ jobs:
             const fs = require('fs');
             const prNumber = ${{ github.event.number }};
 
-            let comment = `## 🚀 Preview Environment Ready!\n\n`;
-            comment += `Your services have been deployed to preview environments:\n\n`;
-
-            // Read domain info from temp file
-            let domainInfo = [];
-            try {
-              const domainData = fs.readFileSync('/tmp/preview-domains.txt', 'utf8');
-              domainInfo = domainData.trim().split('\n').filter(line => line.length > 0);
-            } catch (error) {
-              console.log('No domain info file found, using fallback');
-              // Fallback to services list
-              const services = `${{ needs.detect-changes.outputs.services }}`.split(' ').filter(s => s);
-              domainInfo = services.map(service => `${service}|pr-${prNumber}-${service}.abdullahainun.site|https://pr-${prNumber}-${service}.abdullahainun.site|`);
-            }
+            let comment = `## 🚀 Preview Environment Status\n\n`;
+            
+            let hasSuccessfulDeployments = false;
+            let hasFailedDeployments = false;
 
             for (const line of domainInfo) {
-              const [service, domain, url, domainId] = line.split('|');
-              if (service && domain) {
-                comment += `### 🎯 ${service}\n`;
-                comment += `- **Preview URL:** ${url || `https://${domain}`}\n`;
-                comment += `- **Domain:** \`${domain}\`\n`;
-                comment += `- **Namespace:** \`preview-pr-${prNumber}-${service}\`\n`;
-                comment += `- **Auto-updates:** ✅ (on new commits)\n`;
-                comment += `- **Expires:** 24 hours\n\n`;
+              const parts = line.split('|');
+              const [servicePath, domain, url, domainId, actualServiceName, servicePort, warning] = parts;
+              
+              if (servicePath) {
+                if (domain === 'DEPLOYMENT_FAILED' || domain === 'NO_SERVICE_FOUND' || domain === 'MANIFEST_PARSE_ERROR') {
+                  // Handle deployment failures
+                  hasFailedDeployments = true;
+                  const errorType = domain;
+                  const errorDetails = url || 'Unknown error';
+                  
+                  comment += `### ❌ ${servicePath} - Deployment Failed\n`;
+                  comment += `**Error Type:** ${errorType.replace('_', ' ').toLowerCase()}\n\n`;
+                  comment += `**Error Details:**\n`;
+                  comment += `\`\`\`\n${errorDetails}\`\`\`\n\n`;
+                  comment += `**Troubleshooting:**\n`;
+                  
+                  if (errorType === 'DEPLOYMENT_FAILED') {
+                    comment += `- Check your Kubernetes manifests for syntax errors\n`;
+                    comment += `- Verify resource limits and requests\n`;
+                    comment += `- Check for missing dependencies or secrets\n`;
+                    comment += `- Review the manifest validation logs above\n\n`;
+                  } else if (errorType === 'NO_SERVICE_FOUND') {
+                    comment += `- Add a Kubernetes Service resource to your manifests\n`;
+                    comment += `- Ensure the Service selector matches your pod labels\n`;
+                    comment += `- Verify the Service is defined in base/ or overlay/\n\n`;
+                  } else if (errorType === 'MANIFEST_PARSE_ERROR') {
+                    comment += `- Check YAML syntax in your manifests\n`;
+                    comment += `- Ensure kustomization.yaml is properly configured\n`;
+                    comment += `- Verify file paths in kustomization resources\n\n`;
+                  }
+                  
+                } else if (domain && domain !== '') {
+                  // Handle successful deployments
+                  hasSuccessfulDeployments = true;
+                  const namespaceFormatted = servicePath.replace('/', '-');
+                  const previewNamespace = `preview-pr-${prNumber}-${namespaceFormatted}`;
+                  
+                  comment += `### ✅ ${servicePath} - Deployed Successfully\n`;
+                  comment += `- **Preview URL:** ${url || `https://${domain}`}\n`;
+                  comment += `- **Domain:** \`${domain}\`\n`;
+                  comment += `- **Namespace:** \`${previewNamespace}\`\n`;
+                  
+                  // Show actual service details from manifests
+                  if (actualServiceName && servicePort) {
+                    comment += `- **Service Name:** \`${actualServiceName}\`\n`;
+                    comment += `- **Service Port:** \`${servicePort}\`\n`;
+                    comment += `- **Internal Service:** \`http://${actualServiceName}.${previewNamespace}:${servicePort}\`\n`;
+                  }
+                  
+                  // Show warnings if any
+                  if (warning && warning.trim() !== '') {
+                    comment += `- **⚠️ Warning:** ${warning}\n`;
+                  }
+                  
+                  comment += `- **Auto-updates:** ✅ (on new commits)\n`;
+                  comment += `- **Expires:** 24 hours\n\n`;
+                }
               }
             }
 
-            comment += `### ℹ️ Preview Info\n`;
-            comment += `- 🔄 **Auto-updates** on every commit to this PR\n`;
-            comment += `- 🕐 **Auto-expires** after 24 hours\n`;
-            comment += `- 🧹 **Auto-cleanup** when PR is closed\n`;
-            comment += `- 🔒 **Zero Trust** protection enabled\n`;
-            comment += `- 📊 **Resource limits** applied for fair usage\n\n`;
+            // Add summary section
+            if (hasSuccessfulDeployments && hasFailedDeployments) {
+              comment += `### 📊 Deployment Summary\n`;
+              comment += `- ✅ Some services deployed successfully\n`;
+              comment += `- ❌ Some services failed to deploy\n`;
+              comment += `- 🔧 Please fix the failed deployments and push again\n\n`;
+            } else if (hasFailedDeployments) {
+              comment += `### 📊 Deployment Summary\n`;
+              comment += `- ❌ All deployments failed\n`;
+              comment += `- 🔧 Please fix the issues and push again\n`;
+              comment += `- 💡 Check the error details above for troubleshooting\n\n`;
+            } else if (hasSuccessfulDeployments) {
+              comment += `### 📊 Deployment Summary\n`;
+              comment += `- ✅ All services deployed successfully!\n`;
+              comment += `- 🎉 Your preview environments are ready\n\n`;
+            }
+
+            if (hasSuccessfulDeployments) {
+              comment += `### ℹ️ Preview Info\n`;
+              comment += `- 🔄 **Auto-updates** on every commit to this PR\n`;
+              comment += `- 🕐 **Auto-expires** after 24 hours\n`;
+              comment += `- 🧹 **Auto-cleanup** when PR is closed\n`;
+              comment += `- 🔒 **Zero Trust** protection enabled\n`;
+              comment += `- 📊 **Resource limits** applied for fair usage\n\n`;
+            }
+            
             comment += `*Preview environments are automatically managed by our GitOps platform*`;
 
             github.rest.issues.createComment({
@@ -339,12 +550,10 @@ jobs:
             });
 
   cleanup-preview:
-    runs-on: self-hosted # Changed from ubuntu-latest
+    runs-on: self-hosted
     if: github.event.action == 'closed'
 
     steps:
-      # REMOVED: Setup kubectl steps - tidak perlu lagi!
-
       - name: Cleanup preview environments
         run: |
           PR_NUMBER="${{ github.event.number }}"
@@ -357,57 +566,20 @@ jobs:
           if [ -n "$PREVIEW_NAMESPACES" ]; then
             echo "Found preview namespaces: $PREVIEW_NAMESPACES"
             
-            # Delete each namespace
-            for ns in $PREVIEW_NAMESPACES; do
-              echo "Deleting $ns..."
-              kubectl delete $ns --ignore-not-found=true
-            done
-          else
-            echo "No preview namespaces found for PR #$PR_NUMBER"
-          fi
-
-      - name: Cleanup preview domains
-        run: |
-          PR_NUMBER="${{ github.event.number }}"
-
-          echo "Cleaning up preview domains for PR #$PR_NUMBER"
-
-          # Find all preview namespaces for this PR and get domain IDs
-          PREVIEW_NAMESPACES=$(kubectl get namespaces -l pr-number=$PR_NUMBER -o name 2>/dev/null || true)
-
-          if [ -n "$PREVIEW_NAMESPACES" ]; then
-            echo "Found preview namespaces: $PREVIEW_NAMESPACES"
-            
-            # Extract domain IDs from namespace labels and delete domains
+            # Extract domain IDs and delete domains first
             for ns in $PREVIEW_NAMESPACES; do
               NAMESPACE_NAME=$(echo $ns | cut -d'/' -f2)
               echo "Processing namespace: $NAMESPACE_NAME"
               
-              # Get domain ID from namespace label
               DOMAIN_ID=$(kubectl get namespace $NAMESPACE_NAME -o jsonpath='{.metadata.labels.domain-id}' 2>/dev/null || echo "")
               
               if [ -n "$DOMAIN_ID" ] && [ "$DOMAIN_ID" != "" ]; then
                 echo "Deleting domain ID: $DOMAIN_ID"
-                
-                # Delete domain using correct API endpoint
                 CLEANUP_RESPONSE=$(curl -s -X DELETE "$DOMAIN_GENERATOR_URL/api/domains/$DOMAIN_ID" \
                   -H "Content-Type: application/json")
-                
                 echo "Domain deletion response: $CLEANUP_RESPONSE"
-                
-                # Check if cleanup was successful
-                SUCCESS=$(echo "$CLEANUP_RESPONSE" | jq -r '.success // false' 2>/dev/null || echo "false")
-                
-                if [ "$SUCCESS" = "true" ]; then
-                  echo "✅ Domain ID $DOMAIN_ID deleted successfully"
-                else
-                  echo "⚠️ Domain deletion response for ID $DOMAIN_ID: $CLEANUP_RESPONSE"
-                fi
-              else
-                echo "⚠️ No domain ID found for namespace $NAMESPACE_NAME"
               fi
               
-              # Delete the namespace
               echo "Deleting namespace: $ns"
               kubectl delete $ns --ignore-not-found=true
             done
@@ -435,7 +607,7 @@ jobs:
             });
 
   production-deploy:
-    runs-on: self-hosted # Changed from ubuntu-latest
+    runs-on: self-hosted
     needs: detect-changes
     if: github.event.action == 'closed' && github.event.pull_request.merged == true && needs.detect-changes.outputs.has-changes == 'true'
 
