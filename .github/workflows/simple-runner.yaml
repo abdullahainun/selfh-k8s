@@ -1,0 +1,31 @@
+name: Test Self-Hosted Runner
+
+on:
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  test-homelab-access:
+    runs-on: [self-hosted, jumphost]
+
+    steps:
+      - name: Check runner environment
+        run: |
+          echo "=== Runner Info ==="
+          whoami
+          hostname
+          pwd
+          uname -a
+
+      - name: Check kubectl access
+        run: |
+          echo "=== Kubernetes Access ==="
+          kubectl version --client
+          kubectl get nodes
+          kubectl get namespaces
+
+      - name: Check tools
+        run: |
+          echo "=== Tools ==="
+          kustomize version
+          jq --version
+          yq --version
