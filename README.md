@@ -1,6 +1,6 @@
 # 🏠 Homelab K8s Services
 
-A **GitOps-powered** Kubernetes homelab showcasing cloud-native applications with **automated preview environments** and **community contributions**.
+A **GitOps-powered** Kubernetes homelab with **Cloudflare Tunnel** integration, featuring **automated preview environments** and **community-driven service catalog**.
 
 ## 🚀 Quick Start
 
