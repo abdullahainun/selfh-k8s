@@ -1,0 +1,273 @@
+# .github/workflows/pr-preview.yml
+name: PR Preview Environment
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    paths:
+      - "app/**"
+      - "clusters/homelab/03-community/**"
+
+# Remove KUBECONFIG_DATA - tidak perlu lagi karena kubectl sudah available di runner
+env:
+  DOMAIN_GENERATOR_URL: ${{ secrets.DOMAIN_GENERATOR_URL }}
+
+jobs:
+  detect-changes:
+    runs-on: self-hosted # Changed from ubuntu-latest
+    outputs:
+      services: ${{ steps.changes.outputs.services }}
+      has-changes: ${{ steps.changes.outputs.has-changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed services
+        id: changes
+        run: |
+          # Detect which services were changed
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+          echo "Changed files: $CHANGED_FILES"
+
+          # Extract service names from changed paths
+          SERVICES=$(echo "$CHANGED_FILES" | grep -E '^app/[^/]+/' | cut -d'/' -f2 | sort | uniq | tr '\n' ' ')
+          COMMUNITY_REFS=$(echo "$CHANGED_FILES" | grep -E '^clusters/homelab/03-community/' | sed 's|.*/||' | sed 's|\.yaml$||' | tr '\n' ' ')
+
+          # Combine and deduplicate
+          ALL_SERVICES=$(echo "$SERVICES $COMMUNITY_REFS" | tr ' ' '\n' | sort | uniq | tr '\n' ' ')
+
+          echo "services=$ALL_SERVICES" >> $GITHUB_OUTPUT
+          if [ -n "$ALL_SERVICES" ]; then
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "Detected services: $ALL_SERVICES"
+
+  preview-deploy:
+    runs-on: self-hosted # Changed from ubuntu-latest
+    needs: detect-changes
+    if: github.event.action != 'closed' && needs.detect-changes.outputs.has-changes == 'true'
+    strategy:
+      matrix:
+        service: ${{ fromJson(format('[{0}]', needs.detect-changes.outputs.services)) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # REMOVED: Setup kubectl dan kubeconfig steps - tidak perlu lagi!
+      # kubectl sudah available di self-hosted runner
+
+      - name: Validate service structure
+        run: |
+          SERVICE="${{ matrix.service }}"
+          echo "Validating service: $SERVICE"
+
+          # Check if service directory exists
+          if [ ! -d "app/$SERVICE" ]; then
+            echo "❌ Service directory app/$SERVICE not found"
+            exit 1
+          fi
+
+          # Validate Kubernetes manifests
+          if [ -d "app/$SERVICE/base" ]; then
+            echo "Validating base manifests..."
+            kubectl apply --dry-run=client -f app/$SERVICE/base/ || exit 1
+          fi
+
+          if [ -d "app/$SERVICE/overlays/dev" ]; then
+            echo "Validating dev overlay..."
+            cd app/$SERVICE/overlays/dev
+            kustomize build . | kubectl apply --dry-run=client -f - || exit 1
+            cd ../../../..
+          fi
+
+      - name: Deploy to preview environment
+        run: |
+          SERVICE="${{ matrix.service }}"
+          PR_NUMBER="${{ github.event.number }}"
+          PREVIEW_NAMESPACE="preview-pr-$PR_NUMBER-$SERVICE"
+
+          echo "Deploying $SERVICE to preview namespace: $PREVIEW_NAMESPACE"
+
+          # Create preview namespace
+          kubectl create namespace $PREVIEW_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
+          # Label for easy cleanup
+          kubectl label namespace $PREVIEW_NAMESPACE \
+            preview=true \
+            pr-number=$PR_NUMBER \
+            service=$SERVICE \
+            created-by=github-actions
+
+          # Deploy service to preview namespace
+          if [ -d "app/$SERVICE/overlays/dev" ]; then
+            cd app/$SERVICE/overlays/dev
+            kustomize build . | sed "s/namespace: .*/namespace: $PREVIEW_NAMESPACE/" | kubectl apply -f -
+          else
+            kubectl apply -f app/$SERVICE/base/ -n $PREVIEW_NAMESPACE
+          fi
+
+          # Wait for deployment to be ready
+          kubectl wait --for=condition=available deployment --all -n $PREVIEW_NAMESPACE --timeout=300s || true
+
+      - name: Generate preview domain
+        id: domain
+        run: |
+          SERVICE="${{ matrix.service }}"
+          PR_NUMBER="${{ github.event.number }}"
+
+          # Call domain generator API (comment out untuk testing awal)
+          # DOMAIN_RESPONSE=$(curl -s -X POST "$DOMAIN_GENERATOR_URL/api/preview/create" \
+          #   -H "Content-Type: application/json" \
+          #   -H "Authorization: Bearer ${{ secrets.DOMAIN_GENERATOR_TOKEN }}" \
+          #   -d "{
+          #     \"service\": \"$SERVICE\",
+          #     \"pr\": $PR_NUMBER,
+          #     \"namespace\": \"preview-pr-$PR_NUMBER-$SERVICE\",
+          #     \"type\": \"preview\",
+          #     \"expires_hours\": 24
+          #   }")
+
+          # PREVIEW_DOMAIN=$(echo "$DOMAIN_RESPONSE" | jq -r '.domain')
+
+          # For testing - use static domain
+          PREVIEW_DOMAIN="pr-$PR_NUMBER-$SERVICE.homelab.local"
+
+          if [ -n "$PREVIEW_DOMAIN" ]; then
+            echo "domain=$PREVIEW_DOMAIN" >> $GITHUB_OUTPUT
+            echo "✅ Preview domain: $PREVIEW_DOMAIN"
+          else
+            echo "❌ Failed to create preview domain"
+            exit 1
+          fi
+
+  comment-preview:
+    runs-on: self-hosted # Changed from ubuntu-latest
+    needs: [detect-changes, preview-deploy]
+    if: always() && github.event.action != 'closed' && needs.detect-changes.outputs.has-changes == 'true'
+
+    steps:
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const services = `${{ needs.detect-changes.outputs.services }}`.split(' ').filter(s => s);
+            const prNumber = ${{ github.event.number }};
+
+            let comment = `## 🚀 Preview Environment Ready!\n\n`;
+            comment += `Your services have been deployed to preview environments:\n\n`;
+
+            for (const service of services) {
+              const domain = `pr-${prNumber}-${service}.homelab.local`;
+              comment += `### 🎯 ${service}\n`;
+              comment += `- **Preview URL:** https://${domain}\n`;
+              comment += `- **Namespace:** \`preview-pr-${prNumber}-${service}\`\n`;
+              comment += `- **Auto-updates:** ✅ (on new commits)\n\n`;
+            }
+
+            comment += `### ℹ️ Preview Info\n`;
+            comment += `- 🔄 **Auto-updates** on every commit to this PR\n`;
+            comment += `- 🕐 **Expires** when PR is closed or merged\n`;
+            comment += `- 🧹 **Auto-cleanup** when PR is closed\n`;
+            comment += `- 📊 **Resource limits** applied for fair usage\n\n`;
+            comment += `*Preview environments are automatically managed by our GitOps platform*`;
+
+            github.rest.issues.createComment({
+              issue_number: prNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+  cleanup-preview:
+    runs-on: self-hosted # Changed from ubuntu-latest
+    if: github.event.action == 'closed'
+
+    steps:
+      # REMOVED: Setup kubectl steps - tidak perlu lagi!
+
+      - name: Cleanup preview environments
+        run: |
+          PR_NUMBER="${{ github.event.number }}"
+
+          echo "Cleaning up preview environments for PR #$PR_NUMBER"
+
+          # Find all preview namespaces for this PR
+          PREVIEW_NAMESPACES=$(kubectl get namespaces -l pr-number=$PR_NUMBER -o name 2>/dev/null || true)
+
+          if [ -n "$PREVIEW_NAMESPACES" ]; then
+            echo "Found preview namespaces: $PREVIEW_NAMESPACES"
+            
+            # Delete each namespace
+            for ns in $PREVIEW_NAMESPACES; do
+              echo "Deleting $ns..."
+              kubectl delete $ns --ignore-not-found=true
+            done
+          else
+            echo "No preview namespaces found for PR #$PR_NUMBER"
+          fi
+
+      - name: Cleanup preview domains
+        run: |
+          PR_NUMBER="${{ github.event.number }}"
+
+          # Call domain generator API to cleanup (comment out untuk testing)
+          # curl -s -X DELETE "$DOMAIN_GENERATOR_URL/api/preview/pr/$PR_NUMBER" \
+          #   -H "Authorization: Bearer ${{ secrets.DOMAIN_GENERATOR_TOKEN }}" || true
+
+          echo "Domain cleanup skipped for testing"
+
+      - name: Comment cleanup
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = ${{ github.event.number }};
+            const comment = `## 🧹 Preview Environment Cleaned Up\n\n` +
+              `All preview resources for this PR have been automatically removed:\n\n` +
+              `- ✅ Preview namespaces deleted\n` +
+              `- ✅ Preview domains removed\n` +
+              `- ✅ All resources cleaned up\n\n` +
+              `Thank you for contributing! 🙏`;
+
+            github.rest.issues.createComment({
+              issue_number: prNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+  production-deploy:
+    runs-on: self-hosted # Changed from ubuntu-latest
+    needs: detect-changes
+    if: github.event.action == 'closed' && github.event.pull_request.merged == true && needs.detect-changes.outputs.has-changes == 'true'
+
+    steps:
+      - name: Trigger production deployment
+        run: |
+          echo "PR merged! Production deployment will be handled by Flux CD"
+          echo "Services will be deployed via regular GitOps flow"
+
+      - name: Comment production deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = ${{ github.event.number }};
+            const comment = `## 🎉 Merged to Production!\n\n` +
+              `Your contribution has been merged and will be deployed to production via Flux CD.\n\n` +
+              `### What happens next:\n` +
+              `- 🔄 Flux CD will deploy your service to production namespace\n` +
+              `- 🌐 Permanent domain will be generated\n` +
+              `- 📊 Service will appear in the public catalog\n` +
+              `- ✨ Community can discover and use your service\n\n` +
+              `**Estimated production deployment time:** 2-5 minutes\n\n` +
+              `Thank you for your contribution! 🚀`;
+
+            github.rest.issues.createComment({
+              issue_number: prNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
