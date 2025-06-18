@@ -392,7 +392,7 @@ jobs:
               -d "{
                 \"serviceName\": \"$SERVICE_NAMESPACE_NAME\",
                 \"namespace\": \"$PREVIEW_NAMESPACE\",
-                \"internalService\": \"$INTERNAL_SERVICE_URL\",
+                \"internalService\": \"${ACTUAL_SERVICE_NAME}.${PREVIEW_NAMESPACE}\",
                 \"port\": $ACTUAL_SERVICE_PORT,
                 \"useZeroTrust\": true,
                 \"pullRequestId\": \"$PR_NUMBER\",
@@ -448,7 +448,7 @@ jobs:
             const prNumber = ${{ github.event.number }};
 
             let comment = `## 🚀 Preview Environment Status\n\n`;
-            
+
             let hasSuccessfulDeployments = false;
             let hasFailedDeployments = false;
 
@@ -587,7 +587,7 @@ jobs:
               comment += `- 🔒 **Zero Trust** protection enabled\n`;
               comment += `- 📊 **Resource limits** applied for fair usage\n\n`;
             }
-            
+
             comment += `*Preview environments are automatically managed by our GitOps platform*`;
 
             // Create the GitHub comment
