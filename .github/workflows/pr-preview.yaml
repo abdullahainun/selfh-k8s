@@ -393,8 +393,7 @@ jobs:
                 \"serviceName\": \"$SERVICE_NAMESPACE_NAME\",
                 \"namespace\": \"$PREVIEW_NAMESPACE\",
                 \"internalService\": \"$INTERNAL_SERVICE_URL\",
-                \"actualServiceName\": \"$ACTUAL_SERVICE_NAME\",
-                \"servicePort\": $ACTUAL_SERVICE_PORT,
+                \"port\": $ACTUAL_SERVICE_PORT,
                 \"useZeroTrust\": true,
                 \"pullRequestId\": \"$PR_NUMBER\",
                 \"branch\": \"$BRANCH_NAME\"
@@ -502,7 +501,7 @@ jobs:
               const [servicePath, domain, url, domainId, actualServiceName, servicePort, warning] = parts;
               
               if (servicePath) {
-                if (domain === 'DEPLOYMENT_FAILED' || domain === 'NO_SERVICE_FOUND' || domain === 'MANIFEST_PARSE_ERROR') {
+                if (domain === 'DEPLOYMENT_FAILED' || domain === 'NO_SERVICE_FOUND' || domain === 'MANIFEST_PARSE_ERROR' || domain === 'DOMAIN_API_ERROR') {
                   // Handle deployment failures
                   hasFailedDeployments = true;
                   const errorType = domain;
@@ -527,6 +526,11 @@ jobs:
                     comment += `- Check YAML syntax in your manifests\n`;
                     comment += `- Ensure kustomization.yaml is properly configured\n`;
                     comment += `- Verify file paths in kustomization resources\n\n`;
+                  } else if (errorType === 'DOMAIN_API_ERROR') {
+                    comment += `- Check if the domain generator service is running\n`;
+                    comment += `- Verify the domain generator API configuration\n`;
+                    comment += `- Check for Cloudflare API token issues\n`;
+                    comment += `- Review the domain generator service logs\n\n`;
                   }
                   
                 } else if (domain && domain !== '') {
