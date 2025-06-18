@@ -40,7 +40,7 @@ jobs:
           echo "Changed files: $CHANGED_FILES"
 
           # Extract service names from changed paths
-          SERVICES=$(echo "$CHANGED_FILES" | grep -E '^app/[^/]+/' | cut -d'/' -f2 | sort | uniq | tr '\n' ' ')
+          SERVICES=$(echo "$CHANGED_FILES" | grep -E '^apps/[^/]+/' | cut -d'/' -f2 | sort | uniq | tr '\n' ' ')
           COMMUNITY_REFS=$(echo "$CHANGED_FILES" | grep -E '^clusters/homelab/03-community/' | sed 's|.*/||' | sed 's|\.yaml$||' | tr '\n' ' ')
 
           # Combine and deduplicate
@@ -90,24 +90,24 @@ jobs:
             
             # Validate service structure
             echo "Validating service: $SERVICE"
-            if [ ! -d "app/$SERVICE" ]; then
-              echo "❌ Service directory app/$SERVICE not found"
+            if [ ! -d "apps/$SERVICE" ]; then
+              echo "❌ Service directory apps/$SERVICE not found"
               continue
             fi
 
             # Validate Kubernetes manifests (excluding kustomization files)
-            if [ -d "app/$SERVICE/base" ]; then
+            if [ -d "apps/$SERVICE/base" ]; then
               echo "Validating base manifests..."
               # Only validate actual Kubernetes resources, not kustomization files
-              find app/$SERVICE/base -name "*.yaml" -not -name "kustomization.yaml" -exec kubectl apply --dry-run=client -f {} \; || {
+              find apps/$SERVICE/base -name "*.yaml" -not -name "kustomization.yaml" -exec kubectl apply --dry-run=client -f {} \; || {
                 echo "❌ Base manifest validation failed for $SERVICE"
                 continue
               }
             fi
 
-            if [ -d "app/$SERVICE/overlays/dev" ]; then
+            if [ -d "apps/$SERVICE/overlays/dev" ]; then
               echo "Validating dev overlay..."
-              cd app/$SERVICE/overlays/dev
+              cd apps/$SERVICE/overlays/dev
               # Use kustomize to build and validate the final manifests
               if kustomize build . | kubectl apply --dry-run=client -f -; then
                 echo "✅ Dev overlay validation passed"
@@ -153,9 +153,9 @@ jobs:
               continue
             fi
             
-            if [ -d "app/$SERVICE/overlays/dev" ]; then
+            if [ -d "apps/$SERVICE/overlays/dev" ]; then
               echo "Using kustomize overlay for deployment..."
-              cd app/$SERVICE/overlays/dev
+              cd apps/$SERVICE/overlays/dev
               
               # Debug: show what kustomize builds
               echo "=== Kustomize build output ==="
@@ -187,7 +187,7 @@ jobs:
               # Apply base manifests directly to preview namespace
               echo "=== Applying base manifests ==="
               
-              for manifest_file in app/$SERVICE/base/*.yaml; do
+              for manifest_file in apps/$SERVICE/base/*.yaml; do
                 # Skip kustomization files
                 if [[ "$manifest_file" == *"kustomization.yaml" ]]; then
                   continue
