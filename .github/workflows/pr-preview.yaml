@@ -19,7 +19,7 @@ permissions:
 env:
   DOMAIN_GENERATOR_URL: "https://dg.homelab.local"
   INTERNAL_SERVICE_IP: "10.10.10.101"  # IP untuk load balancer/ingress
-  DOMAIN_PORT: "443"
+  DOMAIN_PORT: "80"
 
 jobs:
   detect-changes:
