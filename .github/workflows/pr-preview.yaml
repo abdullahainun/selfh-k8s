@@ -8,13 +8,22 @@ on:
       - "app/**"
       - "clusters/homelab/03-community/**"
 
+# Add permissions for commenting on PRs
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  actions: read
+
 # Remove KUBECONFIG_DATA - tidak perlu lagi karena kubectl sudah available di runner
 env:
-  DOMAIN_GENERATOR_URL: ${{ secrets.DOMAIN_GENERATOR_URL }}
+  DOMAIN_GENERATOR_URL: "https://dg.homelab.local"
+  INTERNAL_SERVICE_IP: "10.10.10.101"  # IP untuk load balancer/ingress
+  DOMAIN_PORT: "443"
 
 jobs:
   detect-changes:
-    runs-on: self-hosted # Changed from ubuntu-latest
+    runs-on: self-hosted  # Changed from ubuntu-latest
     outputs:
       services: ${{ steps.changes.outputs.services }}
       has-changes: ${{ steps.changes.outputs.has-changes }}
@@ -47,7 +56,7 @@ jobs:
           echo "Detected services: $ALL_SERVICES"
 
   preview-deploy:
-    runs-on: self-hosted # Changed from ubuntu-latest
+    runs-on: self-hosted  # Changed from ubuntu-latest
     needs: detect-changes
     if: github.event.action != 'closed' && needs.detect-changes.outputs.has-changes == 'true'
     strategy:
@@ -118,72 +127,85 @@ jobs:
         run: |
           SERVICE="${{ matrix.service }}"
           PR_NUMBER="${{ github.event.number }}"
+          PREVIEW_NAMESPACE="preview-pr-$PR_NUMBER-$SERVICE"
+          BRANCH_NAME="${{ github.head_ref }}"
 
-          # Call domain generator API (comment out untuk testing awal)
-          # DOMAIN_RESPONSE=$(curl -s -X POST "$DOMAIN_GENERATOR_URL/api/preview/create" \
-          #   -H "Content-Type: application/json" \
-          #   -H "Authorization: Bearer ${{ secrets.DOMAIN_GENERATOR_TOKEN }}" \
-          #   -d "{
-          #     \"service\": \"$SERVICE\",
-          #     \"pr\": $PR_NUMBER,
-          #     \"namespace\": \"preview-pr-$PR_NUMBER-$SERVICE\",
-          #     \"type\": \"preview\",
-          #     \"expires_hours\": 24
-          #   }")
+          echo "Generating domain for service: $SERVICE, PR: $PR_NUMBER, Branch: $BRANCH_NAME"
 
-          # PREVIEW_DOMAIN=$(echo "$DOMAIN_RESPONSE" | jq -r '.domain')
+          # Call your domain generator API
+          DOMAIN_RESPONSE=$(curl -s -X POST "$DOMAIN_GENERATOR_URL/api/domains/generate" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"serviceName\": \"$SERVICE\",
+              \"namespace\": \"$PREVIEW_NAMESPACE\",
+              \"internalService\": \"$INTERNAL_SERVICE_IP\",
+              \"port\": $DOMAIN_PORT,
+              \"useZeroTrust\": true,
+              \"pullRequestId\": \"$PR_NUMBER\",
+              \"branch\": \"$BRANCH_NAME\"
+            }")
 
-          # For testing - use static domain
-          PREVIEW_DOMAIN="pr-$PR_NUMBER-$SERVICE.homelab.local"
+          echo "Domain API Response: $DOMAIN_RESPONSE"
 
-          if [ -n "$PREVIEW_DOMAIN" ]; then
+          # Parse response
+          SUCCESS=$(echo "$DOMAIN_RESPONSE" | jq -r '.success // false')
+          PREVIEW_DOMAIN=$(echo "$DOMAIN_RESPONSE" | jq -r '.domain.full_domain // empty')
+          PREVIEW_URL=$(echo "$DOMAIN_RESPONSE" | jq -r '.domain.url // empty')
+
+          if [ "$SUCCESS" = "true" ] && [ -n "$PREVIEW_DOMAIN" ]; then
             echo "domain=$PREVIEW_DOMAIN" >> $GITHUB_OUTPUT
-            echo "✅ Preview domain: $PREVIEW_DOMAIN"
+            echo "url=$PREVIEW_URL" >> $GITHUB_OUTPUT
+            echo "✅ Preview domain created: $PREVIEW_DOMAIN"
+            echo "✅ Preview URL: $PREVIEW_URL"
           else
             echo "❌ Failed to create preview domain"
+            echo "API Response: $DOMAIN_RESPONSE"
             exit 1
           fi
 
-  # comment-preview:
-  #   runs-on: self-hosted # Changed from ubuntu-latest
-  #   needs: [detect-changes, preview-deploy]
-  #   if: always() && github.event.action != 'closed' && needs.detect-changes.outputs.has-changes == 'true'
+  comment-preview:
+    runs-on: self-hosted  # Changed from ubuntu-latest
+    needs: [detect-changes, preview-deploy]
+    if: always() && github.event.action != 'closed' && needs.detect-changes.outputs.has-changes == 'true'
 
-  #   steps:
-  #     - name: Comment on PR
-  #       uses: actions/github-script@v7
-  #       with:
-  #         script: |
-  #           const services = `${{ needs.detect-changes.outputs.services }}`.split(' ').filter(s => s);
-  #           const prNumber = ${{ github.event.number }};
+    steps:
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const services = `${{ needs.detect-changes.outputs.services }}`.split(' ').filter(s => s);
+            const prNumber = ${{ github.event.number }};
 
-  #           let comment = `## 🚀 Preview Environment Ready!\n\n`;
-  #           comment += `Your services have been deployed to preview environments:\n\n`;
+            let comment = `## 🚀 Preview Environment Ready!\n\n`;
+            comment += `Your services have been deployed to preview environments:\n\n`;
 
-  #           for (const service of services) {
-  #             const domain = `pr-${prNumber}-${service}.homelab.local`;
-  #             comment += `### 🎯 ${service}\n`;
-  #             comment += `- **Preview URL:** https://${domain}\n`;
-  #             comment += `- **Namespace:** \`preview-pr-${prNumber}-${service}\`\n`;
-  #             comment += `- **Auto-updates:** ✅ (on new commits)\n\n`;
-  #           }
+            for (const service of services) {
+              // Get domain from domain generation step (if available)
+              const domain = `pr-${prNumber}-${service}.abdullahainun.site`;  // Fallback format
+              comment += `### 🎯 ${service}\n`;
+              comment += `- **Preview URL:** https://${domain}\n`;
+              comment += `- **Namespace:** \`preview-pr-${prNumber}-${service}\`\n`;
+              comment += `- **Auto-updates:** ✅ (on new commits)\n`;
+              comment += `- **Expires:** 24 hours\n\n`;
+            }
 
-  #           comment += `### ℹ️ Preview Info\n`;
-  #           comment += `- 🔄 **Auto-updates** on every commit to this PR\n`;
-  #           comment += `- 🕐 **Expires** when PR is closed or merged\n`;
-  #           comment += `- 🧹 **Auto-cleanup** when PR is closed\n`;
-  #           comment += `- 📊 **Resource limits** applied for fair usage\n\n`;
-  #           comment += `*Preview environments are automatically managed by our GitOps platform*`;
+            comment += `### ℹ️ Preview Info\n`;
+            comment += `- 🔄 **Auto-updates** on every commit to this PR\n`;
+            comment += `- 🕐 **Auto-expires** after 24 hours\n`;
+            comment += `- 🧹 **Auto-cleanup** when PR is closed\n`;
+            comment += `- 🔒 **Zero Trust** protection enabled\n`;
+            comment += `- 📊 **Resource limits** applied for fair usage\n\n`;
+            comment += `*Preview environments are automatically managed by our GitOps platform*`;
 
-  #           github.rest.issues.createComment({
-  #             issue_number: prNumber,
-  #             owner: context.repo.owner,
-  #             repo: context.repo.repo,
-  #             body: comment
-  #           });
+            github.rest.issues.createComment({
+              issue_number: prNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
 
   cleanup-preview:
-    runs-on: self-hosted # Changed from ubuntu-latest
+    runs-on: self-hosted  # Changed from ubuntu-latest
     if: github.event.action == 'closed'
 
     steps:
@@ -214,11 +236,23 @@ jobs:
         run: |
           PR_NUMBER="${{ github.event.number }}"
 
-          # Call domain generator API to cleanup (comment out untuk testing)
-          # curl -s -X DELETE "$DOMAIN_GENERATOR_URL/api/preview/pr/$PR_NUMBER" \
-          #   -H "Authorization: Bearer ${{ secrets.DOMAIN_GENERATOR_TOKEN }}" || true
+          echo "Cleaning up preview domains for PR #$PR_NUMBER"
 
-          echo "Domain cleanup skipped for testing"
+          # Call domain generator API to cleanup domains for this PR
+          CLEANUP_RESPONSE=$(curl -s -X DELETE "$DOMAIN_GENERATOR_URL/api/domains/pr/$PR_NUMBER" \
+            -H "Content-Type: application/json")
+
+          echo "Domain cleanup response: $CLEANUP_RESPONSE"
+
+          # Check if cleanup was successful
+          SUCCESS=$(echo "$CLEANUP_RESPONSE" | jq -r '.success // false' 2>/dev/null || echo "false")
+          
+          if [ "$SUCCESS" = "true" ]; then
+            echo "✅ Preview domains cleaned up successfully"
+          else
+            echo "⚠️ Domain cleanup response: $CLEANUP_RESPONSE"
+            echo "Note: Domains may have already expired or been cleaned up"
+          fi
 
       - name: Comment cleanup
         uses: actions/github-script@v7
@@ -240,7 +274,7 @@ jobs:
             });
 
   production-deploy:
-    runs-on: self-hosted # Changed from ubuntu-latest
+    runs-on: self-hosted  # Changed from ubuntu-latest
     needs: detect-changes
     if: github.event.action == 'closed' && github.event.pull_request.merged == true && needs.detect-changes.outputs.has-changes == 'true'
 
