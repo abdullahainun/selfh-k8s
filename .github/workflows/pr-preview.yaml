@@ -25,7 +25,7 @@ jobs:
   detect-changes:
     runs-on: self-hosted  # Changed from ubuntu-latest
     outputs:
-      services: ${{ steps.changes.outputs.services }}
+      services-json: ${{ steps.changes.outputs.services-json }}
       has-changes: ${{ steps.changes.outputs.has-changes }}
     steps:
       - uses: actions/checkout@v4
@@ -46,14 +46,21 @@ jobs:
           # Combine and deduplicate
           ALL_SERVICES=$(echo "$SERVICES $COMMUNITY_REFS" | tr ' ' '\n' | sort | uniq | tr '\n' ' ')
 
-          echo "services=$ALL_SERVICES" >> $GITHUB_OUTPUT
-          if [ -n "$ALL_SERVICES" ]; then
+          # Remove leading/trailing spaces and convert to JSON array
+          ALL_SERVICES_TRIMMED=$(echo "$ALL_SERVICES" | sed 's/^ *//;s/ *$//')
+          
+          if [ -n "$ALL_SERVICES_TRIMMED" ]; then
+            # Convert space-separated string to JSON array
+            SERVICES_JSON=$(echo "$ALL_SERVICES_TRIMMED" | jq -R 'split(" ") | map(select(length > 0))')
+            echo "services-json=$SERVICES_JSON" >> $GITHUB_OUTPUT
             echo "has-changes=true" >> $GITHUB_OUTPUT
           else
+            echo "services-json=[]" >> $GITHUB_OUTPUT
             echo "has-changes=false" >> $GITHUB_OUTPUT
           fi
 
-          echo "Detected services: $ALL_SERVICES"
+          echo "Detected services: $ALL_SERVICES_TRIMMED"
+          echo "Services JSON: $SERVICES_JSON"
 
   preview-deploy:
     runs-on: self-hosted  # Changed from ubuntu-latest
@@ -61,7 +68,7 @@ jobs:
     if: github.event.action != 'closed' && needs.detect-changes.outputs.has-changes == 'true'
     strategy:
       matrix:
-        service: ${{ fromJson(format('[{0}]', needs.detect-changes.outputs.services)) }}
+        service: ${{ fromJson(needs.detect-changes.outputs.services-json) }}
 
     steps:
       - uses: actions/checkout@v4
@@ -173,7 +180,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const services = `${{ needs.detect-changes.outputs.services }}`.split(' ').filter(s => s);
+            const services = ${{ needs.detect-changes.outputs.services-json }};
             const prNumber = ${{ github.event.number }};
 
             let comment = `## 🚀 Preview Environment Ready!\n\n`;
