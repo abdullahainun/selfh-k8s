@@ -77,6 +77,9 @@ jobs:
           echo "PR Number: $PR_NUMBER"
           echo "Branch: $BRANCH_NAME"
           
+          # Initialize temp file for domain info
+          > /tmp/preview-domains.txt
+          
           # Process each service
           for SERVICE in $SERVICES; do
             echo "========================================"
@@ -177,9 +180,14 @@ jobs:
             if [ "$SUCCESS" = "true" ] && [ -n "$PREVIEW_DOMAIN" ]; then
               echo "✅ Preview domain created: $PREVIEW_DOMAIN"
               echo "✅ Preview URL: $PREVIEW_URL"
+              
+              # Store domain info for comment (append to temp file)
+              echo "$SERVICE|$PREVIEW_DOMAIN|$PREVIEW_URL" >> /tmp/preview-domains.txt
             else
               echo "❌ Failed to create preview domain for $SERVICE"
               echo "API Response: $DOMAIN_RESPONSE"
+              # Store fallback info
+              echo "$SERVICE|pr-$PR_NUMBER-$SERVICE.abdullahainun.site|https://pr-$PR_NUMBER-$SERVICE.abdullahainun.site" >> /tmp/preview-domains.txt
             fi
             
             echo "✅ Completed deployment for service: $SERVICE"
@@ -196,20 +204,34 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const services = `${{ needs.detect-changes.outputs.services }}`.split(' ').filter(s => s);
+            const fs = require('fs');
             const prNumber = ${{ github.event.number }};
 
             let comment = `## 🚀 Preview Environment Ready!\n\n`;
             comment += `Your services have been deployed to preview environments:\n\n`;
 
-            for (const service of services) {
-              // Get domain from domain generation step (if available)
-              const domain = `pr-${prNumber}-${service}.abdullahainun.site`;  // Fallback format
-              comment += `### 🎯 ${service}\n`;
-              comment += `- **Preview URL:** https://${domain}\n`;
-              comment += `- **Namespace:** \`preview-pr-${prNumber}-${service}\`\n`;
-              comment += `- **Auto-updates:** ✅ (on new commits)\n`;
-              comment += `- **Expires:** 24 hours\n\n`;
+            // Read domain info from temp file
+            let domainInfo = [];
+            try {
+              const domainData = fs.readFileSync('/tmp/preview-domains.txt', 'utf8');
+              domainInfo = domainData.trim().split('\n').filter(line => line.length > 0);
+            } catch (error) {
+              console.log('No domain info file found, using fallback');
+              // Fallback to services list
+              const services = `${{ needs.detect-changes.outputs.services }}`.split(' ').filter(s => s);
+              domainInfo = services.map(service => `${service}|pr-${prNumber}-${service}.abdullahainun.site|https://pr-${prNumber}-${service}.abdullahainun.site`);
+            }
+
+            for (const line of domainInfo) {
+              const [service, domain, url] = line.split('|');
+              if (service && domain) {
+                comment += `### 🎯 ${service}\n`;
+                comment += `- **Preview URL:** ${url || `https://${domain}`}\n`;
+                comment += `- **Domain:** \`${domain}\`\n`;
+                comment += `- **Namespace:** \`preview-pr-${prNumber}-${service}\`\n`;
+                comment += `- **Auto-updates:** ✅ (on new commits)\n`;
+                comment += `- **Expires:** 24 hours\n\n`;
+              }
             }
 
             comment += `### ℹ️ Preview Info\n`;
