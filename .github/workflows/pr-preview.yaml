@@ -144,43 +144,43 @@ jobs:
             exit 1
           fi
 
-  comment-preview:
-    runs-on: self-hosted # Changed from ubuntu-latest
-    needs: [detect-changes, preview-deploy]
-    if: always() && github.event.action != 'closed' && needs.detect-changes.outputs.has-changes == 'true'
+  # comment-preview:
+  #   runs-on: self-hosted # Changed from ubuntu-latest
+  #   needs: [detect-changes, preview-deploy]
+  #   if: always() && github.event.action != 'closed' && needs.detect-changes.outputs.has-changes == 'true'
 
-    steps:
-      - name: Comment on PR
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const services = `${{ needs.detect-changes.outputs.services }}`.split(' ').filter(s => s);
-            const prNumber = ${{ github.event.number }};
+  #   steps:
+  #     - name: Comment on PR
+  #       uses: actions/github-script@v7
+  #       with:
+  #         script: |
+  #           const services = `${{ needs.detect-changes.outputs.services }}`.split(' ').filter(s => s);
+  #           const prNumber = ${{ github.event.number }};
 
-            let comment = `## 🚀 Preview Environment Ready!\n\n`;
-            comment += `Your services have been deployed to preview environments:\n\n`;
+  #           let comment = `## 🚀 Preview Environment Ready!\n\n`;
+  #           comment += `Your services have been deployed to preview environments:\n\n`;
 
-            for (const service of services) {
-              const domain = `pr-${prNumber}-${service}.homelab.local`;
-              comment += `### 🎯 ${service}\n`;
-              comment += `- **Preview URL:** https://${domain}\n`;
-              comment += `- **Namespace:** \`preview-pr-${prNumber}-${service}\`\n`;
-              comment += `- **Auto-updates:** ✅ (on new commits)\n\n`;
-            }
+  #           for (const service of services) {
+  #             const domain = `pr-${prNumber}-${service}.homelab.local`;
+  #             comment += `### 🎯 ${service}\n`;
+  #             comment += `- **Preview URL:** https://${domain}\n`;
+  #             comment += `- **Namespace:** \`preview-pr-${prNumber}-${service}\`\n`;
+  #             comment += `- **Auto-updates:** ✅ (on new commits)\n\n`;
+  #           }
 
-            comment += `### ℹ️ Preview Info\n`;
-            comment += `- 🔄 **Auto-updates** on every commit to this PR\n`;
-            comment += `- 🕐 **Expires** when PR is closed or merged\n`;
-            comment += `- 🧹 **Auto-cleanup** when PR is closed\n`;
-            comment += `- 📊 **Resource limits** applied for fair usage\n\n`;
-            comment += `*Preview environments are automatically managed by our GitOps platform*`;
+  #           comment += `### ℹ️ Preview Info\n`;
+  #           comment += `- 🔄 **Auto-updates** on every commit to this PR\n`;
+  #           comment += `- 🕐 **Expires** when PR is closed or merged\n`;
+  #           comment += `- 🧹 **Auto-cleanup** when PR is closed\n`;
+  #           comment += `- 📊 **Resource limits** applied for fair usage\n\n`;
+  #           comment += `*Preview environments are automatically managed by our GitOps platform*`;
 
-            github.rest.issues.createComment({
-              issue_number: prNumber,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
+  #           github.rest.issues.createComment({
+  #             issue_number: prNumber,
+  #             owner: context.repo.owner,
+  #             repo: context.repo.repo,
+  #             body: comment
+  #           });
 
   cleanup-preview:
     runs-on: self-hosted # Changed from ubuntu-latest
