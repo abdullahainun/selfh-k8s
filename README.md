@@ -28,8 +28,8 @@ A **GitOps-powered** Kubernetes homelab with **Cloudflare Tunnel** integration, 
 ```
 homelab-k8s/
 ├── apps/                    # Application services
-│   ├── ai/                  # AI/ML services
-│   │   └── open-webui/      # Example service
+│   ├── examples/                  # AI/ML services
+│   │   └── whoami/          # Example service
 │   ├── dev/                 # Development tools
 │   └── media/               # Media services
 ├── platform/               # Platform components
@@ -134,8 +134,8 @@ homelab-k8s-worker-2   # Worker node
 
 ## 📞 Support
 
-- 🐛 **Issues**: [GitHub Issues](https://github.com/abdullahainun/homelab-k8s/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/abdullahainun/homelab-k8s/discussions)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/abdullahainun/homelab-k8s-services/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/abdullahainun/homelab-k8s-services/discussions)
 - 📧 **Contact**: [@abdullahainun](https://github.com/abdullahainun)
 
 ---
