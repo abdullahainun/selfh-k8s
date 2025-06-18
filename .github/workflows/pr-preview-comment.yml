@@ -460,6 +460,98 @@ jobs:
               body: plan
             });
 
+  # Show status command
+  show-status:
+    runs-on: self-hosted
+    needs: parse-command
+    if: needs.parse-command.outputs.command == 'status'
+    steps:
+      - name: Get preview status
+        run: |
+          PR_NUMBER="${{ github.event.issue.number }}"
+          
+          echo "## 📊 Preview Environment Status" > /tmp/status-output.md
+          echo "" >> /tmp/status-output.md
+          echo "**PR:** #$PR_NUMBER" >> /tmp/status-output.md
+          echo "" >> /tmp/status-output.md
+          
+          # Find preview namespaces for this PR
+          PREVIEW_NAMESPACES=$(kubectl get namespaces -l pr-number=$PR_NUMBER -o custom-columns=NAME:.metadata.name,SERVICE:.metadata.labels.service,CREATED:.metadata.creationTimestamp --no-headers 2>/dev/null || true)
+          
+          if [ -n "$PREVIEW_NAMESPACES" ]; then
+            echo "### 🟢 Active Preview Environments" >> /tmp/status-output.md
+            echo "" >> /tmp/status-output.md
+            
+            echo "$PREVIEW_NAMESPACES" | while read namespace service created; do
+              if [ -n "$namespace" ]; then
+                echo "#### $service" >> /tmp/status-output.md
+                echo "- **Namespace:** \`$namespace\`" >> /tmp/status-output.md
+                echo "- **Created:** $created" >> /tmp/status-output.md
+                
+                # Get domain info
+                DOMAIN_ID=$(kubectl get namespace $namespace -o jsonpath='{.metadata.labels.domain-id}' 2>/dev/null || echo "")
+                if [ -n "$DOMAIN_ID" ]; then
+                  echo "- **Domain ID:** \`$DOMAIN_ID\`" >> /tmp/status-output.md
+                fi
+                
+                # Get service info
+                SERVICES=$(kubectl get services -n $namespace --no-headers 2>/dev/null || echo "")
+                if [ -n "$SERVICES" ]; then
+                  echo "- **Services:**" >> /tmp/status-output.md
+                  echo "$SERVICES" | while read svc_line; do
+                    SVC_NAME=$(echo "$svc_line" | awk '{print $1}')
+                    SVC_PORT=$(echo "$svc_line" | awk '{print $5}' | cut -d':' -f1)
+                    echo "  - \`$SVC_NAME:$SVC_PORT\`" >> /tmp/status-output.md
+                  done
+                fi
+                
+                # Get pod status
+                POD_STATUS=$(kubectl get pods -n $namespace --no-headers 2>/dev/null || echo "")
+                if [ -n "$POD_STATUS" ]; then
+                  RUNNING_PODS=$(echo "$POD_STATUS" | grep -c "Running" || echo "0")
+                  TOTAL_PODS=$(echo "$POD_STATUS" | wc -l)
+                  echo "- **Pods:** $RUNNING_PODS/$TOTAL_PODS running" >> /tmp/status-output.md
+                fi
+                
+                echo "" >> /tmp/status-output.md
+              fi
+            done
+          else
+            echo "### ℹ️ No Preview Environments Found" >> /tmp/status-output.md
+            echo "" >> /tmp/status-output.md
+            echo "No preview environments are currently active for this PR." >> /tmp/status-output.md
+            echo "" >> /tmp/status-output.md
+            
+            # Check if user can deploy
+            USER="${{ github.actor }}"
+            CORE_TEAM="abdullahainun"
+            
+            if [ "$USER" = "$CORE_TEAM" ]; then
+              echo "**To create preview environments:**" >> /tmp/status-output.md
+              echo "- Run \`/preview\` to deploy all changed services" >> /tmp/status-output.md
+              echo "- Run \`/preview <service>\` to deploy a specific service" >> /tmp/status-output.md
+            else
+              echo "**ℹ️ Preview Environment Info:**" >> /tmp/status-output.md
+              echo "- Only @abdullahainun and write collaborators can create preview environments" >> /tmp/status-output.md
+              echo "- Use \`/plan\` to see what would be deployed" >> /tmp/status-output.md
+              echo "- Contact @abdullahainun for deployment access" >> /tmp/status-output.md
+            fi
+          fi
+
+      - name: Comment status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const status = fs.readFileSync('/tmp/status-output.md', 'utf8');
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: status
+            });
+
   # Main preview deployment
   preview-deploy:
     runs-on: self-hosted
@@ -695,37 +787,28 @@ jobs:
               body: comment
             });
 
-  # Show status command
-  show-status:
+  # Manual cleanup command
+  manual-cleanup:
     runs-on: self-hosted
     needs: parse-command
-    if: needs.parse-command.outputs.command == 'status'
+    if: needs.parse-command.outputs.command == 'cleanup'
     steps:
-      - name: Get preview status
+      - name: Manual cleanup
         run: |
           PR_NUMBER="${{ github.event.issue.number }}"
           
-          echo "## 📊 Preview Environment Status" > /tmp/status-output.md
-          echo "" >> /tmp/status-output.md
-          echo "**PR:** #$PR_NUMBER" >> /tmp/status-output.md
-          echo "" >> /tmp/status-output.md
+          echo "Manual cleanup requested for PR #$PR_NUMBER"
           
-          # Find preview namespaces for this PR
-          PREVIEW_NAMESPACES=$(kubectl get namespaces -l pr-number=$PR_NUMBER -o custom-columns=NAME:.metadata.name,SERVICE:.metadata.labels.service,CREATED:.metadata.creationTimestamp --no-headers 2>/dev/null || true)
+          # Find and cleanup preview namespaces
+          PREVIEW_NAMESPACES=$(kubectl get namespaces -l pr-number=$PR_NUMBER -o name 2>/dev/null || true)
           
           if [ -n "$PREVIEW_NAMESPACES" ]; then
-            echo "### 🟢 Active Preview Environments" >> /tmp/status-output.md
-            echo "" >> /tmp/status-output.md
-            
-            echo "$PREVIEW_NAMESPACES" | while read namespace service created; do
-              if [ -n "$namespace" ]; then
-                echo "#### $service" >> /tmp/status-output.md
-                echo "- **Namespace:** \`$namespace\`" >> /tmp/status-output.md
-                echo "- **Created:** $created" >> /tmp/status-output.md
-                
-                # Get domain info
-                DOMAIN_ID=$(kubectl get namespace $namespace -o jsonpath='{.metadata.labels.domain-id}' 2>/dev/null || echo "")
-                if [ -n "$DOMAIN_ID" ]; then
+            for ns in $PREVIEW_NAMESPACES; do
+              NAMESPACE_NAME=$(echo $ns | cut -d'/' -f2)
+              
+              # Delete domain
+              DOMAIN_ID=$(kubectl get namespace $NAMESPACE_NAME -o jsonpath='{.metadata.labels.domain-id}' 2>/dev/null || echo "")
+              if [ -n "$DOMAIN_ID" ]; then
                 curl -s -X DELETE "$DOMAIN_GENERATOR_URL/api/domains/$DOMAIN_ID" \
                   -H "Content-Type: application/json"
               fi
@@ -963,74 +1046,3 @@ jobs:
                 content: 'confused'
               });
             }
-                  echo "- **Domain ID:** \`$DOMAIN_ID\`" >> /tmp/status-output.md
-                fi
-                
-                # Get service info
-                SERVICES=$(kubectl get services -n $namespace --no-headers 2>/dev/null || echo "")
-                if [ -n "$SERVICES" ]; then
-                  echo "- **Services:**" >> /tmp/status-output.md
-                  echo "$SERVICES" | while read svc_line; do
-                    SVC_NAME=$(echo "$svc_line" | awk '{print $1}')
-                    SVC_PORT=$(echo "$svc_line" | awk '{print $5}' | cut -d':' -f1)
-                    echo "  - \`$SVC_NAME:$SVC_PORT\`" >> /tmp/status-output.md
-                  done
-                fi
-                
-                # Get pod status
-                POD_STATUS=$(kubectl get pods -n $namespace --no-headers 2>/dev/null || echo "")
-                if [ -n "$POD_STATUS" ]; then
-                  RUNNING_PODS=$(echo "$POD_STATUS" | grep -c "Running" || echo "0")
-                  TOTAL_PODS=$(echo "$POD_STATUS" | wc -l)
-                  echo "- **Pods:** $RUNNING_PODS/$TOTAL_PODS running" >> /tmp/status-output.md
-                fi
-                
-                echo "" >> /tmp/status-output.md
-              fi
-            done
-          else
-            echo "### ℹ️ No Preview Environments Found" >> /tmp/status-output.md
-            echo "" >> /tmp/status-output.md
-            echo "No preview environments are currently active for this PR." >> /tmp/status-output.md
-            echo "" >> /tmp/status-output.md
-            echo "**To create preview environments:**" >> /tmp/status-output.md
-            echo "- Run \`/preview\` to deploy all changed services" >> /tmp/status-output.md
-            echo "- Run \`/preview <service>\` to deploy a specific service" >> /tmp/status-output.md
-          fi
-
-      - name: Comment status
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const status = fs.readFileSync('/tmp/status-output.md', 'utf8');
-            
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: status
-            });
-
-  # Manual cleanup command
-  manual-cleanup:
-    runs-on: self-hosted
-    needs: parse-command
-    if: needs.parse-command.outputs.command == 'cleanup'
-    steps:
-      - name: Manual cleanup
-        run: |
-          PR_NUMBER="${{ github.event.issue.number }}"
-          
-          echo "Manual cleanup requested for PR #$PR_NUMBER"
-          
-          # Find and cleanup preview namespaces
-          PREVIEW_NAMESPACES=$(kubectl get namespaces -l pr-number=$PR_NUMBER -o name 2>/dev/null || true)
-          
-          if [ -n "$PREVIEW_NAMESPACES" ]; then
-            for ns in $PREVIEW_NAMESPACES; do
-              NAMESPACE_NAME=$(echo $ns | cut -d'/' -f2)
-              
-              # Delete domain
-              DOMAIN_ID=$(kubectl get namespace $NAMESPACE_NAME -o jsonpath='{.metadata.labels.domain-id}' 2>/dev/null || echo "")
-              if [ -n "$DOMAIN_ID" ]; then
