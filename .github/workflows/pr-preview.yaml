@@ -453,6 +453,50 @@ jobs:
             let hasSuccessfulDeployments = false;
             let hasFailedDeployments = false;
 
+            // Read domain info from temp file
+            let domainInfo = [];
+            try {
+              const domainData = fs.readFileSync('/tmp/preview-domains.txt', 'utf8');
+              domainInfo = domainData.trim().split('\n').filter(line => line.length > 0);
+              console.log(`Found ${domainInfo.length} domain info entries`);
+              console.log('Domain info content:', domainData);
+            } catch (error) {
+              console.log('No domain info file found:', error.message);
+              comment += `### ⚠️ No Deployment Information Found\n\n`;
+              comment += `Could not find deployment status information. This might indicate:\n`;
+              comment += `- No services were detected in the changed files\n`;
+              comment += `- The deployment process didn't complete\n`;
+              comment += `- There was an issue with the workflow execution\n\n`;
+              comment += `Please check the workflow logs for more details.`;
+              
+              github.rest.issues.createComment({
+                issue_number: prNumber,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+              return;
+            }
+
+            // Handle case where file exists but is empty
+            if (domainInfo.length === 0) {
+              console.log('Domain info file is empty');
+              comment += `### ⚠️ No Services Were Processed\n\n`;
+              comment += `The deployment workflow ran but no services were processed. This might indicate:\n`;
+              comment += `- No valid service directories were found in the changed files\n`;
+              comment += `- All services failed validation before deployment\n`;
+              comment += `- The service detection logic didn't match your directory structure\n\n`;
+              comment += `Please check the workflow logs for more details about service detection.`;
+              
+              github.rest.issues.createComment({
+                issue_number: prNumber,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+              return;
+            }
+
             for (const line of domainInfo) {
               const parts = line.split('|');
               const [servicePath, domain, url, domainId, actualServiceName, servicePort, warning] = parts;
@@ -465,7 +509,7 @@ jobs:
                   const errorDetails = url || 'Unknown error';
                   
                   comment += `### ❌ ${servicePath} - Deployment Failed\n`;
-                  comment += `**Error Type:** ${errorType.replace('_', ' ').toLowerCase()}\n\n`;
+                  comment += `**Error Type:** ${errorType.replace(/_/g, ' ').toLowerCase()}\n\n`;
                   comment += `**Error Details:**\n`;
                   comment += `\`\`\`\n${errorDetails}\`\`\`\n\n`;
                   comment += `**Troubleshooting:**\n`;
@@ -541,6 +585,20 @@ jobs:
             }
             
             comment += `*Preview environments are automatically managed by our GitOps platform*`;
+
+            // Create the GitHub comment
+            try {
+              await github.rest.issues.createComment({
+                issue_number: prNumber,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+              console.log('Successfully created PR comment');
+            } catch (error) {
+              console.error('Failed to create PR comment:', error.message);
+              throw error;
+            }
 
             github.rest.issues.createComment({
               issue_number: prNumber,
