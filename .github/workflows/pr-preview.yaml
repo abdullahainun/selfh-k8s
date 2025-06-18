@@ -92,16 +92,27 @@ jobs:
               continue
             fi
 
-            # Validate Kubernetes manifests
+            # Validate Kubernetes manifests (excluding kustomization files)
             if [ -d "app/$SERVICE/base" ]; then
               echo "Validating base manifests..."
-              kubectl apply --dry-run=client -f app/$SERVICE/base/ || continue
+              # Only validate actual Kubernetes resources, not kustomization files
+              find app/$SERVICE/base -name "*.yaml" -not -name "kustomization.yaml" -exec kubectl apply --dry-run=client -f {} \; || {
+                echo "❌ Base manifest validation failed for $SERVICE"
+                continue
+              }
             fi
 
             if [ -d "app/$SERVICE/overlays/dev" ]; then
               echo "Validating dev overlay..."
               cd app/$SERVICE/overlays/dev
-              kustomize build . | kubectl apply --dry-run=client -f - || continue
+              # Use kustomize to build and validate the final manifests
+              if kustomize build . | kubectl apply --dry-run=client -f -; then
+                echo "✅ Dev overlay validation passed"
+              else
+                echo "❌ Dev overlay validation failed for $SERVICE"
+                cd ../../../..
+                continue
+              fi
               cd ../../../..
             fi
             
@@ -119,16 +130,28 @@ jobs:
               created-by=github-actions
 
             # Deploy service to preview namespace
+            echo "Deploying manifests to namespace: $PREVIEW_NAMESPACE"
             if [ -d "app/$SERVICE/overlays/dev" ]; then
+              echo "Using kustomize overlay for deployment..."
               cd app/$SERVICE/overlays/dev
-              kustomize build . | sed "s/namespace: .*/namespace: $PREVIEW_NAMESPACE/" | kubectl apply -f -
+              # Build with kustomize and set namespace
+              kustomize build . | sed "s/namespace: .*/namespace: $PREVIEW_NAMESPACE/g" | kubectl apply -f -
               cd ../../../..
             else
-              kubectl apply -f app/$SERVICE/base/ -n $PREVIEW_NAMESPACE
+              echo "Using base manifests for deployment..."
+              # Apply base manifests directly to preview namespace
+              find app/$SERVICE/base -name "*.yaml" -not -name "kustomization.yaml" -exec kubectl apply -f {} -n $PREVIEW_NAMESPACE \;
             fi
 
             # Wait for deployment to be ready
-            kubectl wait --for=condition=available deployment --all -n $PREVIEW_NAMESPACE --timeout=300s || true
+            echo "Waiting for deployment to be ready..."
+            kubectl wait --for=condition=available deployment --all -n $PREVIEW_NAMESPACE --timeout=300s || {
+              echo "⚠️ Deployment may not be ready yet, but continuing..."
+            }
+            
+            # Show deployment status
+            echo "Current deployment status:"
+            kubectl get all -n $PREVIEW_NAMESPACE || echo "No resources found yet"
             
             # Generate preview domain
             echo "Generating domain for service: $SERVICE"
