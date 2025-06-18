@@ -19,7 +19,7 @@ permissions:
 env:
   DOMAIN_GENERATOR_URL: "https://dg.homelab.local"
   INTERNAL_SERVICE_IP: "10.10.10.101"  # IP untuk load balancer/ingress
-  DOMAIN_PORT: "80"
+  DOMAIN_PORT: "443"
 
 jobs:
   detect-changes:
@@ -169,12 +169,16 @@ jobs:
               
               # Build with kustomize and set namespace
               echo "=== Applying with namespace replacement ==="
-              if kustomize build . | sed "s/namespace: .*/namespace: $PREVIEW_NAMESPACE/g" | tee /tmp/final-manifests.yaml | kubectl apply -f -; then
+              
+              # Remove any existing namespace field and apply to specific namespace
+              if kustomize build . | \
+                 yq eval 'del(.metadata.namespace)' - | \
+                 kubectl apply -f - -n $PREVIEW_NAMESPACE; then
                 echo "✅ Kustomize deployment successful"
               else
                 echo "❌ Kustomize deployment failed"
-                echo "=== Final manifests that failed ==="
-                cat /tmp/final-manifests.yaml
+                echo "=== Kustomize output ==="
+                kustomize build .
               fi
               
               cd ../../../..
