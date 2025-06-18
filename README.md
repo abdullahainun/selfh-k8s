@@ -1,141 +1,143 @@
-# Homelab K8s Services
+# 🏠 Homelab K8s Services
 
-> **Production-Ready Homelab Services for Kubernetes**
->
-> Battle-tested Kubernetes manifests and Helm charts for self-hosted applications, running reliably in production homelab environments.
-
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat-square&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
-[![Kustomize](https://img.shields.io/badge/Kustomize-EF7B4D?style=flat-square&logo=kubernetes&logoColor=white)](https://kustomize.io/)
-[![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white)](https://helm.sh/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-
-## 🎯 What This Repository Offers
-
-This repository contains **production-ready Kubernetes manifests** for popular self-hosted applications, designed and tested in real homelab environments. All services are configured with:
-
-- ✅ **Security best practices** (RBAC, Network Policies, non-root containers)
-- ✅ **Resource management** (limits, requests, health checks)
-- ✅ **High availability** configurations where applicable
-- ✅ **Persistent storage** strategies
-- ✅ **Ingress and TLS** automation
-- ✅ **Monitoring integration** ready
-
-## 🏗️ Repository Structure
-
-```
-├── platform/          # Core infrastructure services
-├── apps/              # Self-hosted applications
-├── helm-charts/       # Helm packages for complex deployments
-├── manifests/         # All-in-one compiled manifests
-├── scripts/           # Automation and setup scripts
-├── docs/              # Comprehensive documentation
-└── examples/          # GitOps and quick-start examples
-```
+A **GitOps-powered** Kubernetes homelab showcasing cloud-native applications with **automated preview environments** and **community contributions**.
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- Kubernetes cluster (v1.25+)
-- kubectl configured
-- Ingress controller capability
-- Storage provisioner
+### Deploy Your Service
+1. **Fork** this repository
+2. **Add your service** to `apps/<category>/<service>/`
+3. **Create a Pull Request**
+4. **Comment** `/preview` to deploy preview environment
+5. **Merge** to deploy to production
 
-### Deploy Platform Services
+### Available Commands
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/homelab-k8s-services.git
-cd homelab-k8s-services
+# Preview & Planning (Everyone)
+/help                    # Show available commands
+/plan                    # Show deployment plan
+/status                  # Check preview environments
 
-# Deploy core platform
-kubectl apply -k platform/cert-manager/overlays/homelab
-kubectl apply -k platform/ingress-nginx/overlays/homelab
-kubectl apply -k platform/metallb/overlays/homelab
+# Deployment (Maintainers & Collaborators)
+/preview                 # Deploy all changed services
+/preview ai/open-webui   # Deploy specific service
+/cleanup                 # Manual cleanup
 ```
 
-### Deploy Applications
-```bash
-# Deploy productivity apps
-kubectl apply -k apps/productivity/gitea/overlays/homelab
-kubectl apply -k apps/productivity/vaultwarden/overlays/homelab
+## 📁 Directory Structure
+```
+homelab-k8s/
+├── apps/                    # Application services
+│   ├── ai/                  # AI/ML services
+│   │   └── open-webui/      # Example service
+│   ├── dev/                 # Development tools
+│   └── media/               # Media services
+├── platform/               # Platform components
+│   ├── ingress-nginx/       # Ingress controller
+│   ├── cert-manager/        # TLS certificates
+│   └── metallb/             # Load balancer
+└── clusters/homelab/        # Cluster configuration
+    └── flux-system/         # GitOps configuration
 ```
 
-## 📦 Available Services
+## 🛠️ Adding a New Service
 
-### Platform Services
-| Service           | Description                             | Status        |
-| ----------------- | --------------------------------------- | ------------- |
-| **cert-manager**  | Automatic TLS certificate management    | ✅ Ready       |
-| **ingress-nginx** | Ingress controller with SSL termination | ✅ Ready       |
-| **metallb**       | Load balancer for bare metal            | ✅ Ready       |
-| **monitoring**    | Prometheus + Grafana stack              | 🚧 In Progress |
+### 1. Create Service Directory
+```bash
+mkdir -p apps/<category>/<service-name>/base
+cd apps/<category>/<service-name>/base
+```
 
-### Applications
+### 2. Add Kubernetes Manifests
+Create your service files:
+- `deployment.yaml` - Your application
+- `service.yaml` - Service exposure
+- `kustomization.yaml` - Kustomize config
 
-#### 🔧 Productivity
-| Service         | Description                           | Status        |
-| --------------- | ------------------------------------- | ------------- |
-| **Gitea**       | Self-hosted Git service               | ✅ Ready       |
-| **Vaultwarden** | Bitwarden-compatible password manager | ✅ Ready       |
-| **Vikunja**     | Task and project management           | 🚧 In Progress |
-| **Wiki.js**     | Modern wiki software                  | 🚧 In Progress |
+### 3. Example Service Structure
+```yaml
+# deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+      - name: my-app
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+---
+# service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app
+spec:
+  selector:
+    app: my-app
+  ports:
+  - port: 80
+    targetPort: 80
+```
 
-#### 🎨 Media & Content
-| Service        | Description                  | Status        |
-| -------------- | ---------------------------- | ------------- |
-| **Immich**     | Self-hosted photo management | 🚧 In Progress |
-| **Calibre**    | E-book server and manager    | 🚧 In Progress |
-| **Excalidraw** | Virtual whiteboard           | 🚧 In Progress |
+## 🌐 Preview Environments
 
-#### 🤖 AI Tools
-| Service        | Description                           | Status  |
-| -------------- | ------------------------------------- | ------- |
-| **Open WebUI** | ChatGPT-like interface for local LLMs | ✅ Ready |
-| **LiteLLM**    | LLM proxy server                      | ✅ Ready |
-
-## 🏠 My Homelab Setup
-
-This repository powers my personal homelab:
-- **Hardware**: 3x Mini PC M720q (Intel i3, 24GB RAM, 512GB SSD)
-- **Kubernetes**: kubeadm cluster with 1 control plane + 2 workers
-- **Storage**: Local persistent volumes + NFS
-- **Network**: MetalLB + Ingress-nginx + Cloudflare DNS
-- **Monitoring**: Prometheus + Grafana + AlertManager
-
-**Uptime**: Running these services reliably for 12+ months with minimal downtime.
-
-## 📚 Documentation
-
-- [🏗️ Architecture Overview](docs/architecture.md)
-- [🚀 Getting Started Guide](docs/getting-started.md)
-- [⚙️ Hardware Requirements](docs/hardware-requirements.md)
-- [🔧 Troubleshooting](docs/troubleshooting.md)
-- [🤝 Contributing](docs/contributing.md)
-
-## 🛡️ Security
-
-All services are configured with security best practices:
-- Non-root containers where possible
-- Resource limits and requests
-- Network policies for traffic isolation
-- RBAC with least privilege principle
-- Regular security updates
+When you create a PR:
+- **Auto-generated domains**: `pr-123-service.abdullahainun.site`
+- **Zero-trust protection**: Cloudflare security
+- **Auto-cleanup**: Removed when PR closes
+- **Resource limits**: Fair usage policies
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please check our [Contributing Guide](docs/contributing.md) for:
-- How to add new services
-- Code standards and best practices
-- Testing requirements
-- Documentation guidelines
+### For Everyone
+- 📋 Use `/plan` to explore deployments (read-only)
+- 📊 Use `/status` to check environments
+- 🤝 Contribute improvements via PRs
 
-## 📜 License
+### For Collaborators
+- 🚀 Deploy preview environments with `/preview`
+- 🧹 Cleanup resources with `/cleanup`
+- ✅ Full access to all commands
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+### Want Deploy Access?
+- Become a regular contributor
+- Request collaborator access from [@abdullahainun](https://github.com/abdullahainun)
+- Join the homelab community!
 
-## ⭐ Star History
+## 🔧 Tech Stack
 
-If this repository helps you build your homelab, please consider giving it a star! ⭐
+- **🚢 Kubernetes**: Container orchestration
+- **🔄 Flux CD**: GitOps continuous deployment
+- **🌐 Ingress NGINX**: Traffic routing
+- **☁️ Cloudflare Tunnel**: Secure external access & DNS
+- **🤖 GitHub Actions**: CI/CD automation
+
+## 📊 Cluster Info
+
+```bash
+# Cluster nodes
+homelab-k8s-cp-1       # Control plane
+homelab-k8s-worker-1   # Worker node
+homelab-k8s-worker-2   # Worker node
+```
+
+## 📞 Support
+
+- 🐛 **Issues**: [GitHub Issues](https://github.com/abdullahainun/homelab-k8s/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/abdullahainun/homelab-k8s/discussions)
+- 📧 **Contact**: [@abdullahainun](https://github.com/abdullahainun)
 
 ---
 
-**Built with ❤️ for the homelab community**
+⭐ **Star this repo** if you find it useful! | 🤝 **Contributions welcome** | 🏠 **Built with ❤️ for the homelab community**
