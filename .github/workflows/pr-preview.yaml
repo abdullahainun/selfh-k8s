@@ -19,7 +19,7 @@ permissions:
 env:
   DOMAIN_GENERATOR_URL: "https://dg.homelab.local"
   INTERNAL_SERVICE_IP: "10.10.10.101"  # IP untuk load balancer/ingress
-  DOMAIN_PORT: "80"
+  DOMAIN_PORT: "443"
 
 jobs:
   detect-changes:
@@ -137,14 +137,36 @@ jobs:
             if [ -d "app/$SERVICE/overlays/dev" ]; then
               echo "Using kustomize overlay for deployment..."
               cd app/$SERVICE/overlays/dev
+              
+              # Debug: show what kustomize builds
+              echo "=== Kustomize build output ==="
+              kustomize build . | tee /tmp/kustomize-output.yaml
+              
               # Build with kustomize and set namespace
-              kustomize build . | sed "s/namespace: .*/namespace: $PREVIEW_NAMESPACE/g" | kubectl apply -f -
+              echo "=== Applying with namespace replacement ==="
+              kustomize build . | sed "s/namespace: .*/namespace: $PREVIEW_NAMESPACE/g" | tee /tmp/final-manifests.yaml | kubectl apply -f -
+              
+              APPLY_RESULT=$?
+              echo "kubectl apply result: $APPLY_RESULT"
+              
               cd ../../../..
             else
               echo "Using base manifests for deployment..."
               # Apply base manifests directly to preview namespace
-              find app/$SERVICE/base -name "*.yaml" -not -name "kustomization.yaml" -exec kubectl apply -f {} -n $PREVIEW_NAMESPACE \;
+              echo "=== Applying base manifests ==="
+              find app/$SERVICE/base -name "*.yaml" -not -name "kustomization.yaml" -exec echo "Applying: {}" \; -exec kubectl apply -f {} -n $PREVIEW_NAMESPACE \;
+              
+              APPLY_RESULT=$?
+              echo "kubectl apply result: $APPLY_RESULT"
             fi
+
+            # Check if resources were actually created
+            echo "=== Checking created resources ==="
+            kubectl get all -n $PREVIEW_NAMESPACE
+            
+            # Show events if there are issues
+            echo "=== Namespace events ==="
+            kubectl get events -n $PREVIEW_NAMESPACE --sort-by='.lastTimestamp' | tail -10
 
             # Wait for deployment to be ready
             echo "Waiting for deployment to be ready..."
@@ -178,16 +200,24 @@ jobs:
             PREVIEW_URL=$(echo "$DOMAIN_RESPONSE" | jq -r '.domain.url // empty')
 
             if [ "$SUCCESS" = "true" ] && [ -n "$PREVIEW_DOMAIN" ]; then
+              # Parse domain ID from response
+              DOMAIN_ID=$(echo "$DOMAIN_RESPONSE" | jq -r '.domain.id // empty')
               echo "✅ Preview domain created: $PREVIEW_DOMAIN"
               echo "✅ Preview URL: $PREVIEW_URL"
+              echo "✅ Domain ID: $DOMAIN_ID"
               
-              # Store domain info for comment (append to temp file)
-              echo "$SERVICE|$PREVIEW_DOMAIN|$PREVIEW_URL" >> /tmp/preview-domains.txt
+              # Store domain info for comment AND cleanup (include domain ID)
+              echo "$SERVICE|$PREVIEW_DOMAIN|$PREVIEW_URL|$DOMAIN_ID" >> /tmp/preview-domains.txt
+              
+              # Also label the namespace with domain ID for cleanup
+              kubectl label namespace $PREVIEW_NAMESPACE \
+                domain-id=$DOMAIN_ID \
+                --overwrite
             else
               echo "❌ Failed to create preview domain for $SERVICE"
               echo "API Response: $DOMAIN_RESPONSE"
-              # Store fallback info
-              echo "$SERVICE|pr-$PR_NUMBER-$SERVICE.abdullahainun.site|https://pr-$PR_NUMBER-$SERVICE.abdullahainun.site" >> /tmp/preview-domains.txt
+              # Store fallback info (no domain ID)
+              echo "$SERVICE|pr-$PR_NUMBER-$SERVICE.abdullahainun.site|https://pr-$PR_NUMBER-$SERVICE.abdullahainun.site|" >> /tmp/preview-domains.txt
             fi
             
             echo "✅ Completed deployment for service: $SERVICE"
@@ -219,11 +249,11 @@ jobs:
               console.log('No domain info file found, using fallback');
               // Fallback to services list
               const services = `${{ needs.detect-changes.outputs.services }}`.split(' ').filter(s => s);
-              domainInfo = services.map(service => `${service}|pr-${prNumber}-${service}.abdullahainun.site|https://pr-${prNumber}-${service}.abdullahainun.site`);
+              domainInfo = services.map(service => `${service}|pr-${prNumber}-${service}.abdullahainun.site|https://pr-${prNumber}-${service}.abdullahainun.site|`);
             }
 
             for (const line of domainInfo) {
-              const [service, domain, url] = line.split('|');
+              const [service, domain, url, domainId] = line.split('|');
               if (service && domain) {
                 comment += `### 🎯 ${service}\n`;
                 comment += `- **Preview URL:** ${url || `https://${domain}`}\n`;
@@ -283,20 +313,47 @@ jobs:
 
           echo "Cleaning up preview domains for PR #$PR_NUMBER"
 
-          # Call domain generator API to cleanup domains for this PR
-          CLEANUP_RESPONSE=$(curl -s -X DELETE "$DOMAIN_GENERATOR_URL/api/domains/pr/$PR_NUMBER" \
-            -H "Content-Type: application/json")
+          # Find all preview namespaces for this PR and get domain IDs
+          PREVIEW_NAMESPACES=$(kubectl get namespaces -l pr-number=$PR_NUMBER -o name 2>/dev/null || true)
 
-          echo "Domain cleanup response: $CLEANUP_RESPONSE"
-
-          # Check if cleanup was successful
-          SUCCESS=$(echo "$CLEANUP_RESPONSE" | jq -r '.success // false' 2>/dev/null || echo "false")
-          
-          if [ "$SUCCESS" = "true" ]; then
-            echo "✅ Preview domains cleaned up successfully"
+          if [ -n "$PREVIEW_NAMESPACES" ]; then
+            echo "Found preview namespaces: $PREVIEW_NAMESPACES"
+            
+            # Extract domain IDs from namespace labels and delete domains
+            for ns in $PREVIEW_NAMESPACES; do
+              NAMESPACE_NAME=$(echo $ns | cut -d'/' -f2)
+              echo "Processing namespace: $NAMESPACE_NAME"
+              
+              # Get domain ID from namespace label
+              DOMAIN_ID=$(kubectl get namespace $NAMESPACE_NAME -o jsonpath='{.metadata.labels.domain-id}' 2>/dev/null || echo "")
+              
+              if [ -n "$DOMAIN_ID" ] && [ "$DOMAIN_ID" != "" ]; then
+                echo "Deleting domain ID: $DOMAIN_ID"
+                
+                # Delete domain using correct API endpoint
+                CLEANUP_RESPONSE=$(curl -s -X DELETE "$DOMAIN_GENERATOR_URL/api/domains/$DOMAIN_ID" \
+                  -H "Content-Type: application/json")
+                
+                echo "Domain deletion response: $CLEANUP_RESPONSE"
+                
+                # Check if cleanup was successful
+                SUCCESS=$(echo "$CLEANUP_RESPONSE" | jq -r '.success // false' 2>/dev/null || echo "false")
+                
+                if [ "$SUCCESS" = "true" ]; then
+                  echo "✅ Domain ID $DOMAIN_ID deleted successfully"
+                else
+                  echo "⚠️ Domain deletion response for ID $DOMAIN_ID: $CLEANUP_RESPONSE"
+                fi
+              else
+                echo "⚠️ No domain ID found for namespace $NAMESPACE_NAME"
+              fi
+              
+              # Delete the namespace
+              echo "Deleting namespace: $ns"
+              kubectl delete $ns --ignore-not-found=true
+            done
           else
-            echo "⚠️ Domain cleanup response: $CLEANUP_RESPONSE"
-            echo "Note: Domains may have already expired or been cleaned up"
+            echo "No preview namespaces found for PR #$PR_NUMBER"
           fi
 
       - name: Comment cleanup
