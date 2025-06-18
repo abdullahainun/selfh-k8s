@@ -6,7 +6,6 @@ on:
     types: [opened, synchronize, reopened, closed]
     paths:
       - "apps/**"
-      - "apps/**"
       - "clusters/homelab/03-community/**"
 
 # Add permissions for commenting on PRs
