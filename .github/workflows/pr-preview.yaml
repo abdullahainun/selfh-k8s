@@ -25,7 +25,7 @@ jobs:
   detect-changes:
     runs-on: self-hosted  # Changed from ubuntu-latest
     outputs:
-      services-json: ${{ steps.changes.outputs.services-json }}
+      services: ${{ steps.changes.outputs.services }}
       has-changes: ${{ steps.changes.outputs.has-changes }}
     steps:
       - uses: actions/checkout@v4
@@ -46,129 +46,122 @@ jobs:
           # Combine and deduplicate
           ALL_SERVICES=$(echo "$SERVICES $COMMUNITY_REFS" | tr ' ' '\n' | sort | uniq | tr '\n' ' ')
 
-          # Remove leading/trailing spaces and convert to JSON array
+          # Remove leading/trailing spaces
           ALL_SERVICES_TRIMMED=$(echo "$ALL_SERVICES" | sed 's/^ *//;s/ *$//')
           
+          echo "services=$ALL_SERVICES_TRIMMED" >> $GITHUB_OUTPUT
           if [ -n "$ALL_SERVICES_TRIMMED" ]; then
-            # Convert space-separated string to JSON array
-            SERVICES_JSON=$(echo "$ALL_SERVICES_TRIMMED" | jq -R 'split(" ") | map(select(length > 0))')
-            echo "services-json=$SERVICES_JSON" >> $GITHUB_OUTPUT
             echo "has-changes=true" >> $GITHUB_OUTPUT
           else
-            echo "services-json=[]" >> $GITHUB_OUTPUT
             echo "has-changes=false" >> $GITHUB_OUTPUT
           fi
 
           echo "Detected services: $ALL_SERVICES_TRIMMED"
-          echo "Services JSON: $SERVICES_JSON"
 
   preview-deploy:
     runs-on: self-hosted  # Changed from ubuntu-latest
     needs: detect-changes
     if: github.event.action != 'closed' && needs.detect-changes.outputs.has-changes == 'true'
-    strategy:
-      matrix:
-        service: ${{ fromJson(needs.detect-changes.outputs.services-json) }}
-
+    
     steps:
       - uses: actions/checkout@v4
 
-      # REMOVED: Setup kubectl dan kubeconfig steps - tidak perlu lagi!
-      # kubectl sudah available di self-hosted runner
-
-      - name: Validate service structure
+      # Deploy each service sequentially instead of using matrix
+      - name: Deploy services to preview
         run: |
-          SERVICE="${{ matrix.service }}"
-          echo "Validating service: $SERVICE"
-
-          # Check if service directory exists
-          if [ ! -d "app/$SERVICE" ]; then
-            echo "❌ Service directory app/$SERVICE not found"
-            exit 1
-          fi
-
-          # Validate Kubernetes manifests
-          if [ -d "app/$SERVICE/base" ]; then
-            echo "Validating base manifests..."
-            kubectl apply --dry-run=client -f app/$SERVICE/base/ || exit 1
-          fi
-
-          if [ -d "app/$SERVICE/overlays/dev" ]; then
-            echo "Validating dev overlay..."
-            cd app/$SERVICE/overlays/dev
-            kustomize build . | kubectl apply --dry-run=client -f - || exit 1
-            cd ../../../..
-          fi
-
-      - name: Deploy to preview environment
-        run: |
-          SERVICE="${{ matrix.service }}"
+          SERVICES="${{ needs.detect-changes.outputs.services }}"
           PR_NUMBER="${{ github.event.number }}"
-          PREVIEW_NAMESPACE="preview-pr-$PR_NUMBER-$SERVICE"
-
-          echo "Deploying $SERVICE to preview namespace: $PREVIEW_NAMESPACE"
-
-          # Create preview namespace
-          kubectl create namespace $PREVIEW_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
-
-          # Label for easy cleanup
-          kubectl label namespace $PREVIEW_NAMESPACE \
-            preview=true \
-            pr-number=$PR_NUMBER \
-            service=$SERVICE \
-            created-by=github-actions
-
-          # Deploy service to preview namespace
-          if [ -d "app/$SERVICE/overlays/dev" ]; then
-            cd app/$SERVICE/overlays/dev
-            kustomize build . | sed "s/namespace: .*/namespace: $PREVIEW_NAMESPACE/" | kubectl apply -f -
-          else
-            kubectl apply -f app/$SERVICE/base/ -n $PREVIEW_NAMESPACE
-          fi
-
-          # Wait for deployment to be ready
-          kubectl wait --for=condition=available deployment --all -n $PREVIEW_NAMESPACE --timeout=300s || true
-
-      - name: Generate preview domain
-        id: domain
-        run: |
-          SERVICE="${{ matrix.service }}"
-          PR_NUMBER="${{ github.event.number }}"
-          PREVIEW_NAMESPACE="preview-pr-$PR_NUMBER-$SERVICE"
           BRANCH_NAME="${{ github.head_ref }}"
+          
+          echo "Services to deploy: $SERVICES"
+          echo "PR Number: $PR_NUMBER"
+          echo "Branch: $BRANCH_NAME"
+          
+          # Process each service
+          for SERVICE in $SERVICES; do
+            echo "========================================"
+            echo "Processing service: $SERVICE"
+            echo "========================================"
+            
+            PREVIEW_NAMESPACE="preview-pr-$PR_NUMBER-$SERVICE"
+            
+            # Validate service structure
+            echo "Validating service: $SERVICE"
+            if [ ! -d "app/$SERVICE" ]; then
+              echo "❌ Service directory app/$SERVICE not found"
+              continue
+            fi
 
-          echo "Generating domain for service: $SERVICE, PR: $PR_NUMBER, Branch: $BRANCH_NAME"
+            # Validate Kubernetes manifests
+            if [ -d "app/$SERVICE/base" ]; then
+              echo "Validating base manifests..."
+              kubectl apply --dry-run=client -f app/$SERVICE/base/ || continue
+            fi
 
-          # Call your domain generator API
-          DOMAIN_RESPONSE=$(curl -s -X POST "$DOMAIN_GENERATOR_URL/api/domains/generate" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"serviceName\": \"$SERVICE\",
-              \"namespace\": \"$PREVIEW_NAMESPACE\",
-              \"internalService\": \"$INTERNAL_SERVICE_IP\",
-              \"port\": $DOMAIN_PORT,
-              \"useZeroTrust\": true,
-              \"pullRequestId\": \"$PR_NUMBER\",
-              \"branch\": \"$BRANCH_NAME\"
-            }")
+            if [ -d "app/$SERVICE/overlays/dev" ]; then
+              echo "Validating dev overlay..."
+              cd app/$SERVICE/overlays/dev
+              kustomize build . | kubectl apply --dry-run=client -f - || continue
+              cd ../../../..
+            fi
+            
+            # Deploy to preview environment
+            echo "Deploying $SERVICE to preview namespace: $PREVIEW_NAMESPACE"
 
-          echo "Domain API Response: $DOMAIN_RESPONSE"
+            # Create preview namespace
+            kubectl create namespace $PREVIEW_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
 
-          # Parse response
-          SUCCESS=$(echo "$DOMAIN_RESPONSE" | jq -r '.success // false')
-          PREVIEW_DOMAIN=$(echo "$DOMAIN_RESPONSE" | jq -r '.domain.full_domain // empty')
-          PREVIEW_URL=$(echo "$DOMAIN_RESPONSE" | jq -r '.domain.url // empty')
+            # Label for easy cleanup
+            kubectl label namespace $PREVIEW_NAMESPACE \
+              preview=true \
+              pr-number=$PR_NUMBER \
+              service=$SERVICE \
+              created-by=github-actions
 
-          if [ "$SUCCESS" = "true" ] && [ -n "$PREVIEW_DOMAIN" ]; then
-            echo "domain=$PREVIEW_DOMAIN" >> $GITHUB_OUTPUT
-            echo "url=$PREVIEW_URL" >> $GITHUB_OUTPUT
-            echo "✅ Preview domain created: $PREVIEW_DOMAIN"
-            echo "✅ Preview URL: $PREVIEW_URL"
-          else
-            echo "❌ Failed to create preview domain"
-            echo "API Response: $DOMAIN_RESPONSE"
-            exit 1
-          fi
+            # Deploy service to preview namespace
+            if [ -d "app/$SERVICE/overlays/dev" ]; then
+              cd app/$SERVICE/overlays/dev
+              kustomize build . | sed "s/namespace: .*/namespace: $PREVIEW_NAMESPACE/" | kubectl apply -f -
+              cd ../../../..
+            else
+              kubectl apply -f app/$SERVICE/base/ -n $PREVIEW_NAMESPACE
+            fi
+
+            # Wait for deployment to be ready
+            kubectl wait --for=condition=available deployment --all -n $PREVIEW_NAMESPACE --timeout=300s || true
+            
+            # Generate preview domain
+            echo "Generating domain for service: $SERVICE"
+            DOMAIN_RESPONSE=$(curl -s -X POST "$DOMAIN_GENERATOR_URL/api/domains/generate" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"serviceName\": \"$SERVICE\",
+                \"namespace\": \"$PREVIEW_NAMESPACE\",
+                \"internalService\": \"$INTERNAL_SERVICE_IP\",
+                \"port\": $DOMAIN_PORT,
+                \"useZeroTrust\": true,
+                \"pullRequestId\": \"$PR_NUMBER\",
+                \"branch\": \"$BRANCH_NAME\"
+              }")
+
+            echo "Domain API Response: $DOMAIN_RESPONSE"
+
+            # Parse response
+            SUCCESS=$(echo "$DOMAIN_RESPONSE" | jq -r '.success // false')
+            PREVIEW_DOMAIN=$(echo "$DOMAIN_RESPONSE" | jq -r '.domain.full_domain // empty')
+            PREVIEW_URL=$(echo "$DOMAIN_RESPONSE" | jq -r '.domain.url // empty')
+
+            if [ "$SUCCESS" = "true" ] && [ -n "$PREVIEW_DOMAIN" ]; then
+              echo "✅ Preview domain created: $PREVIEW_DOMAIN"
+              echo "✅ Preview URL: $PREVIEW_URL"
+            else
+              echo "❌ Failed to create preview domain for $SERVICE"
+              echo "API Response: $DOMAIN_RESPONSE"
+            fi
+            
+            echo "✅ Completed deployment for service: $SERVICE"
+            echo ""
+          done
 
   comment-preview:
     runs-on: self-hosted  # Changed from ubuntu-latest
@@ -180,7 +173,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const services = ${{ needs.detect-changes.outputs.services-json }};
+            const services = `${{ needs.detect-changes.outputs.services }}`.split(' ').filter(s => s);
             const prNumber = ${{ github.event.number }};
 
             let comment = `## 🚀 Preview Environment Ready!\n\n`;
