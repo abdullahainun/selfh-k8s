@@ -1,8 +1,12 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: svc
+  name: excalidraw
+  labels:
+    app: excalidraw
 spec:
+  selector:
+    app: excalidraw
   ports:
     - name: http
       port: 80
