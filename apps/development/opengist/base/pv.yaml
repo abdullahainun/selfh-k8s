@@ -1,0 +1,48 @@
+# Storage Configuration Guidelines:
+# 
+# ON-PREMISES/HOMELAB (current):
+# - Uses manual PV creation with hostPath
+# - storageClassName: local-storage
+# - Requires nodeAffinity for specific worker node
+# 
+# CLOUD ENVIRONMENTS (GCP/AWS):
+# - Remove this PV manifest (use dynamic provisioning)
+# - Only PVC needed with appropriate storageClassName:
+#   * GCP: premium-rwo (SSD) or standard-rwo (HDD)
+#   * AWS: gp3 (recommended) or gp2 (legacy)
+# - No nodeAffinity required (network-attached storage)
+# 
+# Example cloud PVC:
+# spec:
+#   storageClassName: premium-rwo  # GCP
+#   # storageClassName: gp3        # AWS
+#   accessModes: [ReadWriteOnce]
+#   resources:
+#     requests:
+#       storage: 5Gi
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-opengist
+  labels:
+    app: opengist
+    type: local
+spec:
+  storageClassName: local-storage
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /var/lib/storage/opengist
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - homelab-k8s-worker-2
