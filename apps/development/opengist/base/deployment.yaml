@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opengist
+  labels:
+    app: opengist
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opengist
+  template:
+    metadata:
+      labels:
+        app: opengist
+    spec:
+      containers:
+        - name: opengist
+          image: ghcr.io/thomiceli/opengist:1
+          ports:
+            - containerPort: 6157
+              name: http
+          volumeMounts:
+            - name: opengist-data
+              mountPath: /opengist
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 6157
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 6157
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: opengist-data
+          persistentVolumeClaim:
+            claimName: opengist-data
