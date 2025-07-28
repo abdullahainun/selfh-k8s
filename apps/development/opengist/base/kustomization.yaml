@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - pv.yaml # ignore this if you are using cloud provider
+  - pvc.yaml
+
+commonLabels:
+  app: opengist
+  component: development

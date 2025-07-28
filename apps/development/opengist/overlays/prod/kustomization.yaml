@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "256Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "200m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "1Gi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1000m"
+    target:
+      kind: Deployment
+      name: opengist
+  - patch: |-
+      - op: replace
+        path: /spec/resources/requests/storage
+        value: "10Gi"
+    target:
+      kind: PersistentVolumeClaim
+      name: opengist-data
+
+commonLabels:
+  environment: production
