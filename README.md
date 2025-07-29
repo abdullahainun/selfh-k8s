@@ -124,4 +124,4 @@ Ainun Abdullah - [@abdullahainun](https://github.com/abdullahainun)
 
 Project Link: [https://github.com/abdullahainun/selfh-k8s](https://github.com/abdullahainun/selfh-k8s)
 
-<p align="right">(<a href="?tab=readme-ov-file#self-hosted-k8s-services">back to top</a>)</p>
+<p align="right">(<a href="#self-hosted-k8s-services">back to top</a>)</p>
