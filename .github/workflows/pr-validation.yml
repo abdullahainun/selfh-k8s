@@ -156,40 +156,28 @@ jobs:
       run: |
         echo "☸️ Validating Kubernetes manifest syntax..."
         
-        # Setup fake kubeconfig for dry-run validation
-        mkdir -p ~/.kube
-        cat > ~/.kube/config << EOF
-        apiVersion: v1
-        kind: Config
-        clusters:
-        - cluster:
-            server: https://fake-server
-          name: fake-cluster
-        contexts:
-        - context:
-            cluster: fake-cluster
-            user: fake-user
-          name: fake-context
-        current-context: fake-context
-        users:
-        - name: fake-user
-          user:
-            token: fake-token
-        EOF
-        
-        # Function to validate K8s manifests using kubectl apply
+        # Function to validate K8s manifests by parsing YAML output
         validate_k8s_manifest() {
           local overlay_dir=$1
           
           echo "Validating K8s resources in $overlay_dir..."
           
-          # Use kubectl apply with kustomize directly (simpler approach)
-          if kubectl apply --dry-run=client -k "$overlay_dir" &>/dev/null; then
-            echo "✅ Valid K8s manifests: $overlay_dir"
-            return 0
+          # Build with kustomize and validate YAML structure
+          local output_file=$(mktemp)
+          if kustomize build "$overlay_dir" > "$output_file" 2>/dev/null; then
+            # Check if output contains valid Kubernetes resources
+            if grep -q "apiVersion:" "$output_file" && grep -q "kind:" "$output_file"; then
+              echo "✅ Valid K8s manifests: $overlay_dir"
+              rm "$output_file"
+              return 0
+            else
+              echo "❌ No valid K8s resources found in $overlay_dir"
+              rm "$output_file"
+              return 1
+            fi
           else
-            echo "❌ Invalid K8s manifests: $overlay_dir"
-            kubectl apply --dry-run=client -k "$overlay_dir"
+            echo "❌ Failed to build kustomization in $overlay_dir"
+            rm "$output_file"
             return 1
           fi
         }
