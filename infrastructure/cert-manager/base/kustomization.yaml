@@ -7,8 +7,10 @@ metadata:
 # Use official cert-manager manifests as remote base
 resources:
   - https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
+  - cluster-issuer.yaml
 
 # Common labels for all resources
-commonLabels:
-  app.kubernetes.io/managed-by: kustomize
-  app.kubernetes.io/part-of: infrastructure
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: kustomize
+      app.kubernetes.io/part-of: infrastructure

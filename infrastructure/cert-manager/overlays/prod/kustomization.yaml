@@ -7,3 +7,18 @@ metadata:
 # Use the base cert-manager
 resources:
   - ../../base
+
+# Production-specific patches
+patches:
+  # Production environment prefers prod issuer
+  - target:
+      kind: ClusterIssuer
+      name: letsencrypt-prod
+    patch: |-
+      - op: add
+        path: /metadata/annotations/cert-manager.io~1preferred-issuer
+        value: "true"
+
+labels:
+  - pairs:
+      environment: prod
