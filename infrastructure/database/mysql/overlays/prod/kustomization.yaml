@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: HelmRelease
+      name: mysql
+    patch: |-
+      - op: replace
+        path: /spec/values/primary/persistence/size
+        value: 50Gi
+      - op: replace
+        path: /spec/values/resources/limits/memory
+        value: 2Gi
+      - op: replace
+        path: /spec/values/resources/limits/cpu
+        value: 1000m
+      - op: add
+        path: /spec/values/secondary
+        value:
+          replicaCount: 1
+          persistence:
+            enabled: true
+            size: 50Gi
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"

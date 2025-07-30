@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: HelmRelease
+      name: redis
+    patch: |-
+      - op: replace
+        path: /spec/values/master/persistence/size
+        value: 20Gi
+      - op: replace
+        path: /spec/values/master/resources/limits/memory
+        value: 1Gi
+      - op: replace
+        path: /spec/values/master/resources/limits/cpu
+        value: 500m
+      - op: replace
+        path: /spec/values/replica/replicaCount
+        value: 2
+      - op: replace
+        path: /spec/values/replica/persistence/size
+        value: 20Gi
+      - op: replace
+        path: /spec/values/replica/resources/limits/memory
+        value: 1Gi
+      - op: replace
+        path: /spec/values/replica/resources/limits/cpu
+        value: 500m
