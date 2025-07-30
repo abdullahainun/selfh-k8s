@@ -1,0 +1,55 @@
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    # The ACME server URL for Let's Encrypt staging
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    # Email address used for ACME registration
+    email: admin@example.com  # CHANGE THIS: Replace with your email
+    # Name of a secret used to store the ACME account private key
+    privateKeySecretRef:
+      name: letsencrypt-staging
+    # Enable the DNS-01 challenge provider
+    solvers:
+    - dns01:
+        cloudflare:
+          apiTokenSecretRef:
+            name: cloudflare-api-token
+            key: api-token
+      selector:
+        dnsZones:
+        - "example.com"  # CHANGE THIS: Replace with your domain
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    # The ACME server URL for Let's Encrypt production
+    server: https://acme-v02.api.letsencrypt.org/directory
+    # Email address used for ACME registration
+    email: admin@example.com  # CHANGE THIS: Replace with your email
+    # Name of a secret used to store the ACME account private key
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    # Enable the DNS-01 challenge provider
+    solvers:
+    - dns01:
+        cloudflare:
+          apiTokenSecretRef:
+            name: cloudflare-api-token
+            key: api-token
+      selector:
+        dnsZones:
+        - "example.com"  # CHANGE THIS: Replace with your domain
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}

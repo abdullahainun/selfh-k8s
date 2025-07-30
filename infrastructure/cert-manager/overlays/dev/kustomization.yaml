@@ -7,3 +7,18 @@ metadata:
 # Use the base cert-manager
 resources:
   - ../../base
+
+# Development-specific patches
+patches:
+  # Dev environment prefers staging issuer for testing
+  - target:
+      kind: ClusterIssuer
+      name: letsencrypt-staging
+    patch: |-
+      - op: add
+        path: /metadata/annotations/cert-manager.io~1preferred-issuer
+        value: "true"
+
+labels:
+  - pairs:
+      environment: dev

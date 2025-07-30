@@ -1,0 +1,45 @@
+# Example: Wildcard Certificate for ainun.cloud
+# This creates a wildcard certificate that can be used for any subdomain
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-ainun-cloud
+  namespace: default  # Can be any namespace where you need the cert
+spec:
+  secretName: wildcard-ainun-cloud-tls
+  issuerRef:
+    name: letsencrypt-staging  # Use staging for testing
+    kind: ClusterIssuer
+  dnsNames:
+  - "*.example.com"      # CHANGE THIS: Wildcard for your subdomains
+  - "example.com"        # CHANGE THIS: Your root domain
+---
+# Example: Individual Certificate for specific service
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: grafana-ainun-cloud
+  namespace: monitoring
+spec:
+  secretName: grafana-ainun-cloud-tls
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+  dnsNames:
+  - "grafana.example.com"  # CHANGE THIS: Your service domain
+---
+# Example: Development environment certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dev-ainun-cloud
+  namespace: default
+spec:
+  secretName: dev-ainun-cloud-tls
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+  dnsNames:
+  - "*.dev.example.com"   # CHANGE THIS: Your dev subdomains
+  - "dev.example.com"     # CHANGE THIS: Your dev domain
