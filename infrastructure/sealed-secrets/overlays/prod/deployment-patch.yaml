@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sealed-secrets-controller
+  namespace: kube-system
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+      - name: sealed-secrets-controller
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        # Production-specific configuration
+        args:
+        - --update-status
+        - --key-renew-period=8760h  # 1 year for production

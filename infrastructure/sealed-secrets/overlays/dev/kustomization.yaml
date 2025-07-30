@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: sealed-secrets-dev
+
+# Use the base sealed-secrets
+resources:
+  - ../../base
+
+# Development-specific patches
+patchesStrategicMerge:
+  - deployment-patch.yaml
