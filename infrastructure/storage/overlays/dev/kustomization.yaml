@@ -26,5 +26,6 @@ patches:
             ]
           }
 
-commonLabels:
-  environment: dev
+labels:
+  - pairs:
+      environment: dev

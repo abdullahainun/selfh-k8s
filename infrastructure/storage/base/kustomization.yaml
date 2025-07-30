@@ -17,21 +17,9 @@ patches:
       - op: add
         path: /metadata/annotations/storageclass.kubernetes.io~1is-default-class
         value: "true"
-  - target:
-      kind: Namespace
-      name: local-path-storage
-    patch: |-
-      - op: add
-        path: /metadata/labels/pod-security.kubernetes.io~1enforce
-        value: "privileged"
-      - op: add
-        path: /metadata/labels/pod-security.kubernetes.io~1audit
-        value: "privileged"  
-      - op: add
-        path: /metadata/labels/pod-security.kubernetes.io~1warn
-        value: "privileged"
 
-commonLabels:
-  app.kubernetes.io/name: local-path-provisioner
-  app.kubernetes.io/component: storage
-  app.kubernetes.io/part-of: selfh-k8s
+labels:
+  - pairs:
+      app.kubernetes.io/name: local-path-provisioner
+      app.kubernetes.io/component: storage
+      app.kubernetes.io/part-of: selfh-k8s

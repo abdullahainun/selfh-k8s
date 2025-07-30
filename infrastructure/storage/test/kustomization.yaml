@@ -9,7 +9,8 @@ metadata:
 resources:
   - test-pvc.yaml
 
-commonLabels:
-  app.kubernetes.io/name: storage-test
-  app.kubernetes.io/component: test
-  app.kubernetes.io/part-of: selfh-k8s
+labels:
+  - pairs:
+      app.kubernetes.io/name: storage-test
+      app.kubernetes.io/component: test
+      app.kubernetes.io/part-of: selfh-k8s
