@@ -181,6 +181,109 @@ jobs:
           fi
           
           # Check for HelmRelease resources
+          if grep -q "kind: HelmRelease" "$output_file"; then
+            echo "🎯 Found HelmRelease resources in $overlay_dir"
+            
+            # Basic validation for required fields
+            if ! grep -q "spec:" "$output_file" || ! grep -q "chart:" "$output_file"; then
+              echo "❌ Invalid HelmRelease structure in $overlay_dir"
+              rm "$output_file"
+              return 1
+            fi
+            
+            echo "✅ Valid HelmRelease structure"
+          fi
+          
+          # Check for HelmRepository resources
+          if grep -q "kind: HelmRepository" "$output_file"; then
+            echo "📦 Found HelmRepository resources in $overlay_dir"
+            
+            # Basic validation for required fields
+            if ! grep -q "spec:" "$output_file" || ! grep -q "url:" "$output_file"; then
+              echo "❌ Invalid HelmRepository structure in $overlay_dir"
+              rm "$output_file"
+              return 1
+            fi
+            
+            echo "✅ Valid HelmRepository structure"
+          fi
+          
+          rm "$output_file"
+          return 0
+        }
+        
+        # Validate all overlays that might contain Flux resources
+        for overlay in infrastructure/*/overlays/*/ apps/*/overlays/*/; do
+          if [ -d "$overlay" ]; then
+            validate_flux_resources "$overlay" || exit 1
+          fi
+        done
+        
+        echo "✅ All Flux resources are valid!"
+
+    - name: Validate SealedSecrets
+      run: |
+        echo "🔐 Validating SealedSecret resources..."
+        
+        # Function to validate SealedSecret resources
+        validate_sealed_secrets() {
+          local overlay_dir=$1
+          
+          echo "Validating SealedSecrets in $overlay_dir..."
+          
+          # Build and extract resources
+          local output_file=$(mktemp)
+          if ! kustomize build "$overlay_dir" > "$output_file" 2>/dev/null; then
+            echo "❌ Failed to build $overlay_dir"
+            rm "$output_file"
+            return 1
+          fi
+          
+          # Check for SealedSecret resources
+          if grep -q "kind: SealedSecret" "$output_file"; then
+            echo "🔒 Found SealedSecret resources in $overlay_dir"
+            
+            # Check for placeholder values that need to be replaced
+            if grep -q "REPLACE_WITH_SEALED" "$output_file"; then
+              echo "⚠️ SealedSecret contains placeholder values in $overlay_dir"
+              echo "   Remember to replace REPLACE_WITH_SEALED_* placeholders with actual sealed values"
+            fi
+            
+            echo "✅ SealedSecret structure validated"
+          fi
+          
+          rm "$output_file"
+          return 0
+        }
+        
+        # Validate all overlays that might contain SealedSecret resources
+        for overlay in infrastructure/*/overlays/*/ apps/*/overlays/*/; do
+          if [ -d "$overlay" ]; then
+            validate_sealed_secrets "$overlay" || exit 1
+          fi
+        done
+        
+        echo "✅ All SealedSecret resources are valid!"
+
+    - name: Validate Flux HelmRelease and HelmRepository
+      run: |
+        echo "⚓ Validating Flux HelmRelease and HelmRepository resources..."
+        
+        # Function to validate Flux resources
+        validate_flux_resources() {
+          local overlay_dir=$1
+          
+          echo "Validating Flux resources in $overlay_dir..."
+          
+          # Build and extract resources
+          local output_file=$(mktemp)
+          if ! kustomize build "$overlay_dir" > "$output_file" 2>/dev/null; then
+            echo "❌ Failed to build $overlay_dir"
+            rm "$output_file"
+            return 1
+          fi
+          
+          # Check for HelmRelease resources
           local helm_releases=$(yq eval 'select(.kind == "HelmRelease")' "$output_file" 2>/dev/null || true)
           if [ -n "$helm_releases" ] && [ "$helm_releases" != "null" ]; then
             echo "🎯 Found HelmRelease resources in $overlay_dir"
