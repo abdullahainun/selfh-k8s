@@ -1,0 +1,25 @@
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: Config
+metadata:
+  name: config
+  namespace: gatekeeper-system
+spec:
+  # Only exclude essential system namespaces in prod
+  match:
+    - excludedNamespaces:
+      - kube-system
+      - kube-public
+      - kube-node-lease  
+      - gatekeeper-system
+      processes: ["*"]
+  # Enable validation and audit with more verbose logging
+  validation:
+    traces:
+      - user:
+          kind:
+            group: "*"
+            version: "*" 
+            kind: "*"
+  # Audit every 30 seconds in production
+  audit:
+    auditInterval: 30s

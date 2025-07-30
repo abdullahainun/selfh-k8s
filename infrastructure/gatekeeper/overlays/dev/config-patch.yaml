@@ -1,0 +1,26 @@
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: Config
+metadata:
+  name: config
+  namespace: gatekeeper-system
+spec:
+  # Exclude system namespaces from policy enforcement in dev
+  match:
+    - excludedNamespaces: 
+      - kube-system
+      - kube-public  
+      - kube-node-lease
+      - gatekeeper-system
+      - metallb-system
+      processes: ["*"]
+  # Enable validation and audit
+  validation:
+    traces:
+      - user:
+          kind:
+            group: "*"
+            version: "*"
+            kind: "*"
+  # Audit every 60 seconds in dev
+  audit:
+    auditInterval: 60s

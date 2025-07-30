@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: constraints
+
+# Base constraints - minimal policies
+resources: []
+
+# Note: Actual constraint instances will be added in overlays
+# based on environment-specific requirements
