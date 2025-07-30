@@ -1,0 +1,71 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: kube-prometheus-stack-dev
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+resources:
+  - ../../base
+
+patches:
+  # Reduce resource requirements for dev
+  - target:
+      kind: Prometheus
+      name: prometheus
+    patch: |-
+      - op: replace
+        path: /spec/resources/requests/memory
+        value: "512Mi"
+      - op: replace
+        path: /spec/resources/limits/memory
+        value: "1Gi"
+      - op: replace
+        path: /spec/storage/volumeClaimTemplate/spec/resources/requests/storage
+        value: "20Gi"
+      - op: replace
+        path: /spec/retention
+        value: "7d"
+  
+  - target:
+      kind: PersistentVolumeClaim
+      name: grafana-pvc
+    patch: |-
+      - op: replace
+        path: /spec/resources/requests/storage
+        value: "5Gi"
+
+  # Dev-specific Grafana config
+  - target:
+      kind: ConfigMap
+      name: grafana-config
+    patch: |-
+      - op: replace
+        path: /data/grafana.ini
+        value: |
+          [server]
+          http_port = 3000
+          domain = grafana.dev.homelab.local
+          
+          [security]
+          admin_user = admin
+          admin_password = admin123
+          
+          [users]
+          allow_sign_up = true
+          allow_org_create = false
+          auto_assign_org = true
+          auto_assign_org_role = Editor
+          
+          [auth.anonymous]
+          enabled = true
+          org_role = Viewer
+          
+          [log]
+          mode = console
+          level = debug
+
+labels:
+  - pairs:
+      environment: dev

@@ -1,0 +1,101 @@
+---
+# ServiceMonitor for Kubernetes API Server
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kubernetes-apiservers
+  namespace: monitoring
+  labels:
+    team: platform
+spec:
+  jobLabel: component
+  selector:
+    matchLabels:
+      component: apiserver
+      provider: kubernetes
+  namespaceSelector:
+    matchNames:
+    - default
+  endpoints:
+  - port: https
+    interval: 30s
+    scheme: https
+    tlsConfig:
+      caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      serverName: kubernetes
+    bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+---
+# ServiceMonitor for kubelet
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kubernetes-nodes-kubelet
+  namespace: monitoring
+  labels:
+    team: platform
+spec:
+  jobLabel: __meta_kubernetes_service_name
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kubelet
+  namespaceSelector:
+    matchNames:
+    - kube-system
+  endpoints:
+  - port: https-metrics
+    interval: 30s
+    scheme: https
+    tlsConfig:
+      caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      insecureSkipVerify: true
+    bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+  - port: https-metrics
+    interval: 30s
+    scheme: https
+    path: /metrics/cadvisor
+    tlsConfig:
+      caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      insecureSkipVerify: true
+    bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+---
+# ServiceMonitor for kube-state-metrics (need to deploy kube-state-metrics separately)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kube-state-metrics
+  namespace: monitoring
+  labels:
+    team: platform
+spec:
+  jobLabel: app.kubernetes.io/name
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-state-metrics
+  namespaceSelector:
+    matchNames:
+    - monitoring
+  endpoints:
+  - port: http-metrics
+    interval: 30s
+    path: /metrics
+---
+# ServiceMonitor for node-exporter (need to deploy node-exporter separately)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: node-exporter
+  namespace: monitoring
+  labels:
+    team: platform
+spec:
+  jobLabel: app.kubernetes.io/name
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: node-exporter
+  namespaceSelector:
+    matchNames:
+    - monitoring
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics

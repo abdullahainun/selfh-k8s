@@ -1,0 +1,89 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: kube-prometheus-stack-prod
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+resources:
+  - ../../base
+
+patches:
+  # Production resource settings
+  - target:
+      kind: Prometheus
+      name: prometheus
+    patch: |-
+      - op: replace
+        path: /spec/resources/requests/memory
+        value: "2Gi"
+      - op: replace
+        path: /spec/resources/limits/memory
+        value: "4Gi"
+      - op: replace
+        path: /spec/resources/requests/cpu
+        value: "1000m"
+      - op: replace
+        path: /spec/resources/limits/cpu
+        value: "2000m"
+      - op: replace
+        path: /spec/retention
+        value: "90d"
+
+  # Production Grafana config
+  - target:
+      kind: ConfigMap
+      name: grafana-config
+    patch: |-
+      - op: replace
+        path: /data/grafana.ini
+        value: |
+          [server]
+          http_port = 3000
+          domain = grafana.homelab.local
+          
+          [security]
+          admin_user = admin
+          admin_password = changeme123!
+          
+          [users]
+          allow_sign_up = false
+          allow_org_create = false
+          auto_assign_org = true
+          auto_assign_org_role = Viewer
+          
+          [auth.anonymous]
+          enabled = false
+          
+          [log]
+          mode = console
+          level = info
+          
+          [alerting]
+          enabled = true
+          
+          [metrics]
+          enabled = true
+
+  # Production Grafana resources
+  - target:
+      kind: Deployment
+      name: grafana
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "512Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "1Gi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "200m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1000m"
+
+labels:
+  - pairs:
+      environment: prod
