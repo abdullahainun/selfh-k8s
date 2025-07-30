@@ -15,7 +15,7 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "200m"
-        # Add development-specific args if needed
+        # Development-specific args
         args:
         - --update-status
         - --key-renew-period=720h

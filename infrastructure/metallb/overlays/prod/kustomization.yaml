@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: metallb-prod
+
+# Use the base metallb
+resources:
+  - ../../base
+
+# Production-specific patches (if needed)
+# patchesStrategicMerge:
+#   - configmap-patch.yaml

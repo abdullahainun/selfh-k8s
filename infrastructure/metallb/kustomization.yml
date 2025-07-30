@@ -1,7 +1,0 @@
-# kustomization.yml
-namespace: metallb-system
-
-resources:
-  - github.com/metallb/metallb/config/native?ref=v0.15.2
-  - default-pool.yaml
-  - default-pool-l2.yaml

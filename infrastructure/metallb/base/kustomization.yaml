@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: metallb-base
+
+# Target namespace
+namespace: metallb-system
+
+# Use official metallb manifests as remote base and local configs
+resources:
+  - github.com/metallb/metallb/config/native?ref=v0.15.2
+  - default-pool.yaml
+  - default-pool-l2.yaml
+
+# Common labels for all resources
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/part-of: infrastructure
