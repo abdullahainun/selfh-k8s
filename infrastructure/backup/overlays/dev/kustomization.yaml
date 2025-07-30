@@ -1,0 +1,67 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: velero-backup-dev
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+resources:
+  - ../../base
+  # Choose storage option (uncomment one):
+  - ../../storage/minio          # Option 1: In-cluster MinIO
+  # - ../../storage/external     # Option 2: External MinIO/S3
+
+patches:
+  # Reduce resources for development
+  - target:
+      kind: Deployment
+      name: velero
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "64Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "256Mi"
+  
+  - target:
+      kind: DaemonSet
+      name: node-agent
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "64Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "256Mi"
+  
+  # Shorter retention for dev environment
+  - target:
+      kind: Schedule
+      name: daily-backup
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/ttl
+        value: "48h"  # 2 days
+  
+  - target:
+      kind: Schedule
+      name: weekly-full-backup
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/ttl
+        value: "168h"  # 7 days
+  
+  # Smaller MinIO storage for dev
+  - target:
+      kind: PersistentVolumeClaim
+      name: minio-storage
+    patch: |-
+      - op: replace
+        path: /spec/resources/requests/storage
+        value: "20Gi"
+
+labels:
+  - pairs:
+      environment: dev

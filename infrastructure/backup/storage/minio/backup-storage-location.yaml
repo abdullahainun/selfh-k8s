@@ -1,0 +1,27 @@
+---
+# In-cluster MinIO Storage Configuration
+apiVersion: velero.io/v1
+kind: BackupStorageLocation
+metadata:
+  name: default
+  namespace: velero
+spec:
+  provider: aws
+  objectStorage:
+    bucket: velero-backups
+    prefix: k8s-cluster
+  config:
+    region: us-east-1
+    s3ForcePathStyle: "true"
+    s3Url: http://minio.velero.svc.cluster.local:9000
+---
+# Volume Snapshot Location
+apiVersion: velero.io/v1
+kind: VolumeSnapshotLocation
+metadata:
+  name: default
+  namespace: velero
+spec:
+  provider: aws
+  config:
+    region: us-east-1

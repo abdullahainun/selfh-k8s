@@ -1,0 +1,71 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: velero-backup-prod
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+resources:
+  - ../../base
+  # Choose storage option (uncomment one):
+  # - ../../storage/minio          # Option 1: In-cluster MinIO
+  - ../../storage/external        # Option 2: External MinIO/S3 (recommended for prod)
+
+patches:
+  # Production resource settings
+  - target:
+      kind: Deployment
+      name: velero
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "256Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "1Gi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "200m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1000m"
+  
+  - target:
+      kind: DaemonSet
+      name: node-agent
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "256Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "1Gi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "200m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1000m"
+  
+  # Longer retention for production
+  - target:
+      kind: Schedule
+      name: weekly-full-backup
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/ttl
+        value: "2160h"  # 90 days
+  
+  # More frequent critical backups in production
+  - target:
+      kind: Schedule
+      name: critical-apps-backup
+    patch: |-
+      - op: replace
+        path: /spec/schedule
+        value: "0 */4 * * *"  # Every 4 hours instead of 6
+
+labels:
+  - pairs:
+      environment: prod

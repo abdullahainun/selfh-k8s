@@ -1,0 +1,109 @@
+---
+# Daily backup for all namespaces
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: daily-backup
+  namespace: velero
+spec:
+  schedule: "0 2 * * *"  # 2 AM daily
+  template:
+    metadata:
+      labels:
+        backup-type: daily
+    spec:
+      # Include all namespaces except system ones
+      includedNamespaces:
+      - "default"
+      - "monitoring" 
+      - "nginx-external"
+      - "nginx-internal"
+      - "chartdb"
+      - "open-webui"
+      - "tenangdb"
+      - "waha"
+      - "shlink"
+      # Add more namespaces as needed
+      
+      # Exclude system namespaces
+      excludedNamespaces:
+      - "kube-system"
+      - "kube-public"
+      - "kube-node-lease"
+      - "velero"
+      - "cert-manager"
+      - "ingress-nginx"
+      - "metallb-system"
+      - "local-path-storage"
+      
+      # Include cluster resources
+      includeClusterResources: true
+      
+      # Backup persistent volumes using Restic
+      defaultVolumesToFsBackup: true
+      
+      # Retention policy
+      ttl: "168h"  # 7 days
+      
+      # Storage location
+      storageLocation: default
+---
+# Weekly full backup including system namespaces
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: weekly-full-backup
+  namespace: velero
+spec:
+  schedule: "0 1 * * 0"  # 1 AM every Sunday
+  template:
+    metadata:
+      labels:
+        backup-type: weekly-full
+    spec:
+      # Backup everything except velero itself
+      excludedNamespaces:
+      - "velero"
+      
+      # Include cluster resources
+      includeClusterResources: true
+      
+      # Backup persistent volumes
+      defaultVolumesToFsBackup: true
+      
+      # Longer retention for weekly backups
+      ttl: "720h"  # 30 days
+      
+      # Storage location
+      storageLocation: default
+---
+# Critical applications backup (more frequent)
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: critical-apps-backup
+  namespace: velero
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  template:
+    metadata:
+      labels:
+        backup-type: critical
+    spec:
+      # Only critical namespaces
+      includedNamespaces:
+      - "monitoring"
+      - "default"
+      # Add more critical namespaces
+      
+      # Include cluster resources
+      includeClusterResources: false
+      
+      # Backup persistent volumes
+      defaultVolumesToFsBackup: true
+      
+      # Shorter retention for frequent backups
+      ttl: "72h"  # 3 days
+      
+      # Storage location
+      storageLocation: default

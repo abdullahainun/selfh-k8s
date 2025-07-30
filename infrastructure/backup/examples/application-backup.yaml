@@ -1,0 +1,138 @@
+# Examples of application-specific backup configurations
+
+---
+# Example 1: Backup specific namespace with hooks
+apiVersion: velero.io/v1
+kind: Backup
+metadata:
+  name: database-backup
+  namespace: velero
+spec:
+  includedNamespaces:
+  - "database"
+  
+  # Backup persistent volumes using Restic file-level backup
+  defaultVolumesToFsBackup: true
+  
+  # Include cluster resources related to this namespace
+  includeClusterResources: false
+  
+  # Storage location
+  storageLocation: default
+  
+  # TTL for this backup
+  ttl: "720h"  # 30 days
+  
+  # Backup hooks for database consistency
+  hooks:
+    resources:
+    - name: postgres-backup-hook
+      includedNamespaces:
+      - "database"
+      includedResources:
+      - "pods"
+      labelSelector:
+        matchLabels:
+          app: postgres
+      pre:
+      - exec:
+          container: postgres
+          command:
+          - /bin/bash
+          - -c
+          - "pg_dump -U postgres mydb > /var/lib/postgresql/data/backup.sql"
+          onError: Fail
+          timeout: 300s
+      post:
+      - exec:
+          container: postgres
+          command:
+          - /bin/bash
+          - -c
+          - "rm -f /var/lib/postgresql/data/backup.sql"
+
+---
+# Example 2: Backup with volume exclusions
+apiVersion: velero.io/v1
+kind: Backup
+metadata:
+  name: app-backup-selective
+  namespace: velero
+spec:
+  includedNamespaces:
+  - "myapp"
+  
+  # Exclude temporary volumes
+  excludedResources:
+  - "pods"
+  - "replicasets"
+  
+  # Only backup specific volume types
+  volumeSnapshotLocations:
+  - default
+  
+  # Selective volume backup
+  defaultVolumesToFsBackup: false
+  
+  # Custom resource filters
+  orLabelSelectors:
+  - matchLabels:
+      backup: "enabled"
+
+---
+# Example 3: One-time backup for migration
+apiVersion: velero.io/v1
+kind: Backup
+metadata:
+  name: migration-backup
+  namespace: velero
+spec:
+  # Backup everything except system namespaces
+  excludedNamespaces:
+  - "kube-system"
+  - "kube-public"
+  - "kube-node-lease"
+  - "velero"
+  
+  # Include all cluster resources
+  includeClusterResources: true
+  
+  # Backup all volumes
+  defaultVolumesToFsBackup: true
+  
+  # Long retention for migration
+  ttl: "2160h"  # 90 days
+  
+  # Custom labels for identification
+  metadata:
+    labels:
+      backup-type: migration
+      cluster: source
+
+---
+# Example 4: Backup specific resources only
+apiVersion: velero.io/v1
+kind: Backup
+metadata:
+  name: config-backup
+  namespace: velero
+spec:
+  # Backup all namespaces
+  includedNamespaces: []
+  
+  # Only backup configuration resources
+  includedResources:
+  - "configmaps"
+  - "secrets"
+  - "persistentvolumeclaims"
+  - "ingresses"
+  - "services"
+  
+  # Exclude volumes (only metadata)
+  defaultVolumesToFsBackup: false
+  
+  # Include cluster-level configs
+  includeClusterResources: true
+  
+  # Short retention for config backups
+  ttl: "168h"  # 7 days
