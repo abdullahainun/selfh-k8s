@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: local-path-provisioner
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+resources:
+  - https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.28/deploy/local-path-storage.yaml
+
+patches:
+  - target:
+      kind: StorageClass
+      name: local-path
+    patch: |-
+      - op: add
+        path: /metadata/annotations/storageclass.kubernetes.io~1is-default-class
+        value: "true"
+  - target:
+      kind: Namespace
+      name: local-path-storage
+    patch: |-
+      - op: add
+        path: /metadata/labels/pod-security.kubernetes.io~1enforce
+        value: "privileged"
+      - op: add
+        path: /metadata/labels/pod-security.kubernetes.io~1audit
+        value: "privileged"  
+      - op: add
+        path: /metadata/labels/pod-security.kubernetes.io~1warn
+        value: "privileged"
+
+commonLabels:
+  app.kubernetes.io/name: local-path-provisioner
+  app.kubernetes.io/component: storage
+  app.kubernetes.io/part-of: selfh-k8s
