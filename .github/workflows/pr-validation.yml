@@ -156,6 +156,27 @@ jobs:
       run: |
         echo "☸️ Validating Kubernetes manifest syntax..."
         
+        # Setup fake kubeconfig for dry-run validation
+        mkdir -p ~/.kube
+        cat > ~/.kube/config << EOF
+        apiVersion: v1
+        kind: Config
+        clusters:
+        - cluster:
+            server: https://fake-server
+          name: fake-cluster
+        contexts:
+        - context:
+            cluster: fake-cluster
+            user: fake-user
+          name: fake-context
+        current-context: fake-context
+        users:
+        - name: fake-user
+          user:
+            token: fake-token
+        EOF
+        
         # Function to validate K8s manifests using kubectl apply
         validate_k8s_manifest() {
           local overlay_dir=$1
