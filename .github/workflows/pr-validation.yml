@@ -6,7 +6,6 @@ on:
     paths:
       - 'apps/**'
       - 'infrastructure/**'
-      - 'examples/**'
 
 jobs:
   validate-manifests:
@@ -153,12 +152,6 @@ jobs:
           fi
         done
         
-        # Test examples
-        for overlay in examples/*/overlays/*/; do
-          if [ -d "$overlay" ]; then
-            test_build "$overlay" || exit 1
-          fi
-        done
         
         echo "✅ All kustomize builds successful!"
 
@@ -435,7 +428,7 @@ jobs:
         }
         
         # Validate all overlays
-        for overlay in apps/*/overlays/*/ infrastructure/*/overlays/*/ examples/*/overlays/*/; do
+        for overlay in apps/*/overlays/*/ infrastructure/*/overlays/*/; do
           if [ -d "$overlay" ]; then
             validate_k8s_manifest "$overlay" || exit 1
           fi

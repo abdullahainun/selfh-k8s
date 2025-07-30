@@ -1,7 +1,7 @@
 <div align="center">
-  <h3 align="center">Self-Hosted K8s Services</h3>
+  <h3 align="center">Self-Hosted K8s Homelab</h3>
   <p align="center">
-    A simple Kubernetes homelab running self-hosted applications with GitOps deployment
+    Production-ready Kubernetes homelab with GitOPS, databases, monitoring, and security
     <br />
     <a href="docs/"><strong>Explore the docs »</strong></a>
     <br />
@@ -14,94 +14,145 @@
 
 ## Table of Contents
 
-- [About The Project](#about-the-project)
-- [Built With](#built-with)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-- [Usage](#usage)
-- [Roadmap](#roadmap)
+- [About](#about)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Infrastructure](#infrastructure)
+- [Applications](#applications)
 - [Contributing](#contributing)
 - [License](#license)
-- [Contact](#contact)
 
-## About The Project
+## About
 
-A Kubernetes homelab for running self-hosted applications using GitOps principles. This repository contains manifests for various services organized by category, making it easy to deploy and manage containerized applications.
+A complete Kubernetes homelab template with production-ready infrastructure and applications. Fork, customize, and deploy your own self-hosted services with enterprise-grade security and observability.
 
-**Key Features:**
-- 🚀 GitOps deployment with Kustomize
-- 📦 Pre-configured service templates
-- 🏗️ Organized by application categories
-- 🔧 Development and production overlays
+## Features
+
+✅ **Complete Infrastructure Stack**
+- 🔐 SSL certificates with cert-manager + Cloudflare
+- 🗄️ Database layer (PostgreSQL, MySQL, Redis)
+- 📊 Monitoring stack (Prometheus, Grafana, AlertManager)
+- 🛡️ Security policies with OPA Gatekeeper
+- 🔒 Sealed secrets for credential management
+
+✅ **GitOps Ready**
+- 🚀 FluxCD for automated deployments
+- 📦 Helm integration for complex applications
+- 🔄 Multi-environment overlays (dev/prod)
+
+✅ **Production Applications**
+- 🛠️ Development tools (ChartDB, OpenGist)
+- 📝 Productivity apps (Excalidraw)
+- 🎯 Ready for media and monitoring apps
 
 ### Built With
 
 - ![Kubernetes](https://img.shields.io/badge/kubernetes-%23326ce5.svg?style=for-the-badge&logo=kubernetes&logoColor=white)
-- ![Kustomize](https://img.shields.io/badge/kustomize-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)
+- ![FluxCD](https://img.shields.io/badge/flux-5468FF?style=for-the-badge&logo=flux&logoColor=white)
+- ![Helm](https://img.shields.io/badge/helm-0F1689?style=for-the-badge&logo=helm&logoColor=white)
 
-## Getting Started
+## Quick Start
 
 ### Prerequisites
 
-- Kubernetes cluster (1.20+)
-- kubectl configured
-- Kustomize (optional, included in kubectl)
+- **Kubernetes cluster** (1.24+) with storage class
+- **kubectl** configured and connected
+- **Domain name** for SSL certificates (Cloudflare DNS)
+- **Basic understanding** of Kubernetes and Kustomize
 
 ### Installation
 
-1. Clone the repository
-   ```sh
-   git clone https://github.com/abdullahainun/selfh-k8s.git
+1. **Fork and clone**
+   ```bash
+   git clone https://github.com/yourusername/selfh-k8s.git
    cd selfh-k8s
    ```
 
-2. Deploy a service
-   ```sh
-   kubectl apply -k apps/development/chartdb/overlays/prod
+2. **Deploy core infrastructure** (in order)
+   ```bash
+   # Storage and networking
+   kubectl apply -k infrastructure/storage/overlays/prod/
+   kubectl apply -k infrastructure/metallb/overlays/prod/
+   kubectl apply -k infrastructure/ingress-nginx/overlays/prod/
+   
+   # Security and certificates
+   kubectl apply -k infrastructure/sealed-secrets/overlays/prod/
+   kubectl apply -k infrastructure/cert-manager/overlays/prod/  # Configure secrets first
+   
+   # GitOps (optional)
+   kubectl apply -k infrastructure/flux-system/overlays/prod/
    ```
 
-## Usage
+3. **Deploy databases** (after configuring sealed secrets)
+   ```bash
+   kubectl apply -k infrastructure/postgresql/overlays/prod/
+   kubectl apply -k infrastructure/mysql/overlays/prod/
+   kubectl apply -k infrastructure/redis/overlays/prod/
+   ```
 
-Browse available services in the `apps/` directory organized by category:
+4. **Deploy applications**
+   ```bash
+   kubectl apply -k apps/development/chartdb/overlays/prod/
+   kubectl apply -k apps/productivity/excalidraw/overlays/prod/
+   ```
 
-- **Development** - Dev tools and utilities (ChartDB, OpenGist)
-- **Productivity** - Collaboration tools (Excalidraw)
-- **Media** - Media management (coming soon)
-- **Monitoring** - System monitoring (coming soon)
+> **⚠️ Important:** Configure secrets and SSL certificates before deploying applications. See [docs/](docs/) for detailed setup.
+
+## Infrastructure
+
+### Core Components
+
+| Component | Purpose | Status |
+|-----------|---------|--------|
+| **cert-manager** | SSL certificates via Cloudflare | ✅ Ready |
+| **sealed-secrets** | Encrypted secrets management | ✅ Ready |
+| **metallb** | Load balancer for bare metal | ✅ Ready |
+| **ingress-nginx** | HTTP/HTTPS traffic routing | ✅ Ready |
+| **storage** | Local path provisioner | ✅ Ready |
+
+### Data & Observability
+
+| Component | Purpose | Status |
+|-----------|---------|--------|
+| **postgresql** | Primary database | ✅ Ready |
+| **mysql** | Secondary database | ✅ Ready |
+| **redis** | Cache and sessions | ✅ Ready |
+| **monitoring** | Prometheus + Grafana stack | ✅ Ready |
+| **gatekeeper** | Policy enforcement | ✅ Ready |
 
 ### Directory Structure
 
 ```
 selfh-k8s/
 ├── apps/                   # Application services
-│   ├── development/        # Dev tools and utilities
-│   ├── productivity/       # Collaboration tools
-│   ├── media/             # Media management
-│   └── monitoring/        # System monitoring
+│   ├── development/        # Dev tools (ChartDB, OpenGist)
+│   ├── productivity/       # Collaboration (Excalidraw)
+│   ├── media/             # Media services
+│   └── monitoring/        # Monitoring apps
 ├── infrastructure/         # Platform components
-│   ├── ingress-nginx/     # Traffic routing
-│   ├── cert-manager/      # TLS certificates
-│   └── storage/           # Storage classes
-└── examples/              # Usage examples
-    └── remote-base-example/ # Example using remote base
+│   ├── cert-manager/      # SSL certificates
+│   ├── postgresql/        # Database cluster
+│   ├── monitoring/        # Observability stack
+│   ├── flux-system/       # GitOps controller
+│   └── ...               # Other infrastructure
+└── docs/                  # Documentation
 ```
 
-### Adding New Services
+## Applications
 
-1. Create directory: `apps/<category>/<service>/base/`
-2. Add manifests: `deployment.yaml`, `service.yaml`, `kustomization.yaml`
-3. Create overlays for dev/prod environments
-4. Submit PR for review
+### Available Apps
 
-## Roadmap
+- **ChartDB** - Database design tool
+- **OpenGist** - Code snippet sharing
+- **Excalidraw** - Collaborative whiteboarding
 
-- [ ] Add media services
-- [ ] Implement monitoring stack
-- [ ] Add automated testing
-- [ ] Create documentation site
+### Adding New Apps
 
-See [open issues](https://github.com/abdullahainun/selfh-k8s/issues) for proposed features and known issues.
+1. Create app structure: `apps/<category>/<app>/base/`
+2. Add Kubernetes manifests
+3. Create dev/prod overlays
+4. Configure ingress and secrets
+5. Submit pull request
 
 ## Contributing
 
