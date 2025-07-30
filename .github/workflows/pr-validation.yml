@@ -26,6 +26,16 @@ jobs:
       uses: azure/setup-kubectl@v3
       with:
         version: 'v1.28.0'
+
+    - name: Setup Flux CLI
+      uses: fluxcd/flux2/action@main
+      with:
+        version: 'latest'
+
+    - name: Setup Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: 'v3.14.0'
     
     - name: Validate directory structure
       run: |
@@ -152,6 +162,248 @@ jobs:
         
         echo "✅ All kustomize builds successful!"
 
+    - name: Validate Flux HelmRelease and HelmRepository
+      run: |
+        echo "⚓ Validating Flux HelmRelease and HelmRepository resources..."
+        
+        # Function to validate Flux resources
+        validate_flux_resources() {
+          local overlay_dir=$1
+          
+          echo "Validating Flux resources in $overlay_dir..."
+          
+          # Build and extract resources
+          local output_file=$(mktemp)
+          if ! kustomize build "$overlay_dir" > "$output_file" 2>/dev/null; then
+            echo "❌ Failed to build $overlay_dir"
+            rm "$output_file"
+            return 1
+          fi
+          
+          # Check for HelmRelease resources
+          if grep -q "kind: HelmRelease" "$output_file"; then
+            echo "🎯 Found HelmRelease resources in $overlay_dir"
+            
+            # Basic validation for required fields
+            if ! grep -q "spec:" "$output_file" || ! grep -q "chart:" "$output_file"; then
+              echo "❌ Invalid HelmRelease structure in $overlay_dir"
+              rm "$output_file"
+              return 1
+            fi
+            
+            echo "✅ Valid HelmRelease structure"
+          fi
+          
+          # Check for HelmRepository resources
+          if grep -q "kind: HelmRepository" "$output_file"; then
+            echo "📦 Found HelmRepository resources in $overlay_dir"
+            
+            # Basic validation for required fields
+            if ! grep -q "spec:" "$output_file" || ! grep -q "url:" "$output_file"; then
+              echo "❌ Invalid HelmRepository structure in $overlay_dir"
+              rm "$output_file"
+              return 1
+            fi
+            
+            echo "✅ Valid HelmRepository structure"
+          fi
+          
+          rm "$output_file"
+          return 0
+        }
+        
+        # Validate all overlays that might contain Flux resources
+        for overlay in infrastructure/*/overlays/*/ apps/*/overlays/*/; do
+          if [ -d "$overlay" ]; then
+            validate_flux_resources "$overlay" || exit 1
+          fi
+        done
+        
+        echo "✅ All Flux resources are valid!"
+
+    - name: Validate SealedSecrets
+      run: |
+        echo "🔐 Validating SealedSecret resources..."
+        
+        # Function to validate SealedSecret resources
+        validate_sealed_secrets() {
+          local overlay_dir=$1
+          
+          echo "Validating SealedSecrets in $overlay_dir..."
+          
+          # Build and extract resources
+          local output_file=$(mktemp)
+          if ! kustomize build "$overlay_dir" > "$output_file" 2>/dev/null; then
+            echo "❌ Failed to build $overlay_dir"
+            rm "$output_file"
+            return 1
+          fi
+          
+          # Check for SealedSecret resources
+          if grep -q "kind: SealedSecret" "$output_file"; then
+            echo "🔒 Found SealedSecret resources in $overlay_dir"
+            
+            # Check for placeholder values that need to be replaced
+            if grep -q "REPLACE_WITH_SEALED" "$output_file"; then
+              echo "⚠️ SealedSecret contains placeholder values in $overlay_dir"
+              echo "   Remember to replace REPLACE_WITH_SEALED_* placeholders with actual sealed values"
+            fi
+            
+            echo "✅ SealedSecret structure validated"
+          fi
+          
+          rm "$output_file"
+          return 0
+        }
+        
+        # Validate all overlays that might contain SealedSecret resources
+        for overlay in infrastructure/*/overlays/*/ apps/*/overlays/*/; do
+          if [ -d "$overlay" ]; then
+            validate_sealed_secrets "$overlay" || exit 1
+          fi
+        done
+        
+        echo "✅ All SealedSecret resources are valid!"
+
+    - name: Validate Flux HelmRelease and HelmRepository
+      run: |
+        echo "⚓ Validating Flux HelmRelease and HelmRepository resources..."
+        
+        # Function to validate Flux resources
+        validate_flux_resources() {
+          local overlay_dir=$1
+          
+          echo "Validating Flux resources in $overlay_dir..."
+          
+          # Build and extract resources
+          local output_file=$(mktemp)
+          if ! kustomize build "$overlay_dir" > "$output_file" 2>/dev/null; then
+            echo "❌ Failed to build $overlay_dir"
+            rm "$output_file"
+            return 1
+          fi
+          
+          # Check for HelmRelease resources
+          local helm_releases=$(yq eval 'select(.kind == "HelmRelease")' "$output_file" 2>/dev/null || true)
+          if [ -n "$helm_releases" ] && [ "$helm_releases" != "null" ]; then
+            echo "🎯 Found HelmRelease resources in $overlay_dir"
+            
+            # Validate HelmRelease structure
+            yq eval 'select(.kind == "HelmRelease") | .[]' "$output_file" 2>/dev/null | while IFS= read -r release; do
+              if [ -n "$release" ] && [ "$release" != "null" ]; then
+                # Check required fields
+                local chart_name=$(echo "$release" | yq eval '.spec.chart.spec.chart // ""' -)
+                local source_ref=$(echo "$release" | yq eval '.spec.chart.spec.sourceRef.name // ""' -)
+                local interval=$(echo "$release" | yq eval '.spec.interval // ""' -)
+                
+                if [ -z "$chart_name" ] || [ -z "$source_ref" ] || [ -z "$interval" ]; then
+                  echo "❌ Invalid HelmRelease structure in $overlay_dir"
+                  echo "   Missing required fields: chart.spec.chart, chart.spec.sourceRef.name, or interval"
+                  rm "$output_file"
+                  return 1
+                fi
+                
+                echo "✅ Valid HelmRelease: chart=$chart_name, sourceRef=$source_ref"
+              fi
+            done
+          fi
+          
+          # Check for HelmRepository resources
+          local helm_repos=$(yq eval 'select(.kind == "HelmRepository")' "$output_file" 2>/dev/null || true)
+          if [ -n "$helm_repos" ] && [ "$helm_repos" != "null" ]; then
+            echo "📦 Found HelmRepository resources in $overlay_dir"
+            
+            # Validate HelmRepository structure
+            yq eval 'select(.kind == "HelmRepository") | .[]' "$output_file" 2>/dev/null | while IFS= read -r repo; do
+              if [ -n "$repo" ] && [ "$repo" != "null" ]; then
+                local repo_url=$(echo "$repo" | yq eval '.spec.url // ""' -)
+                local repo_interval=$(echo "$repo" | yq eval '.spec.interval // ""' -)
+                
+                if [ -z "$repo_url" ] || [ -z "$repo_interval" ]; then
+                  echo "❌ Invalid HelmRepository structure in $overlay_dir"
+                  echo "   Missing required fields: spec.url or spec.interval"
+                  rm "$output_file"
+                  return 1
+                fi
+                
+                echo "✅ Valid HelmRepository: url=$repo_url"
+              fi
+            done
+          fi
+          
+          rm "$output_file"
+          return 0
+        }
+        
+        # Validate all overlays that might contain Flux resources
+        for overlay in infrastructure/*/overlays/*/ apps/*/overlays/*/; do
+          if [ -d "$overlay" ]; then
+            validate_flux_resources "$overlay" || exit 1
+          fi
+        done
+        
+        echo "✅ All Flux resources are valid!"
+
+    - name: Validate SealedSecrets
+      run: |
+        echo "🔐 Validating SealedSecret resources..."
+        
+        # Function to validate SealedSecret resources
+        validate_sealed_secrets() {
+          local overlay_dir=$1
+          
+          echo "Validating SealedSecrets in $overlay_dir..."
+          
+          # Build and extract resources
+          local output_file=$(mktemp)
+          if ! kustomize build "$overlay_dir" > "$output_file" 2>/dev/null; then
+            echo "❌ Failed to build $overlay_dir"
+            rm "$output_file"
+            return 1
+          fi
+          
+          # Check for SealedSecret resources
+          local sealed_secrets=$(yq eval 'select(.kind == "SealedSecret")' "$output_file" 2>/dev/null || true)
+          if [ -n "$sealed_secrets" ] && [ "$sealed_secrets" != "null" ]; then
+            echo "🔒 Found SealedSecret resources in $overlay_dir"
+            
+            # Validate SealedSecret structure
+            yq eval 'select(.kind == "SealedSecret") | .[]' "$output_file" 2>/dev/null | while IFS= read -r secret; do
+              if [ -n "$secret" ] && [ "$secret" != "null" ]; then
+                local encrypted_data=$(echo "$secret" | yq eval '.spec.encryptedData // ""' -)
+                local template_name=$(echo "$secret" | yq eval '.spec.template.metadata.name // ""' -)
+                
+                if [ -z "$encrypted_data" ] || [ -z "$template_name" ]; then
+                  echo "❌ Invalid SealedSecret structure in $overlay_dir"
+                  echo "   Missing required fields: spec.encryptedData or spec.template.metadata.name"
+                  rm "$output_file"
+                  return 1
+                fi
+                
+                # Check for placeholder values that need to be replaced
+                if echo "$encrypted_data" | grep -q "REPLACE_WITH_SEALED"; then
+                  echo "⚠️ SealedSecret contains placeholder values in $overlay_dir"
+                  echo "   Remember to replace REPLACE_WITH_SEALED_* placeholders with actual sealed values"
+                fi
+                
+                echo "✅ Valid SealedSecret: $template_name"
+              fi
+            done
+          fi
+          
+          rm "$output_file"
+          return 0
+        }
+        
+        # Validate all overlays that might contain SealedSecret resources
+        for overlay in infrastructure/*/overlays/*/ apps/*/overlays/*/; do
+          if [ -d "$overlay" ]; then
+            validate_sealed_secrets "$overlay" || exit 1
+          fi
+        done
+        
+        echo "✅ All SealedSecret resources are valid!"
+
     - name: Validate Kubernetes manifests
       run: |
         echo "☸️ Validating Kubernetes manifest syntax..."
@@ -234,6 +486,8 @@ jobs:
         echo "✅ Directory structure follows base/overlays pattern"
         echo "✅ All kustomization.yaml files are valid"
         echo "✅ All kustomize builds are successful"
+        echo "✅ All Flux HelmRelease and HelmRepository resources are valid"
+        echo "✅ All SealedSecret resources are valid"
         echo "✅ All Kubernetes manifests are syntactically correct"
         echo "✅ Common labels check completed"
         echo ""
