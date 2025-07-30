@@ -10,5 +10,5 @@ resources:
 
 # Add dev-specific customizations
 replicas:
-  - name: excalidraw
-    count: 1
+- name: excalidraw
+  count: 1
