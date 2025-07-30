@@ -13,8 +13,10 @@ Automatic SSL/TLS certificate management with Let's Encrypt.
 - *Coming soon: cert-manager with ACME configuration*
 
 ### 💾 storage
-Persistent volume configurations and storage classes.
-- *Coming soon: Local storage, NFS, and cloud storage configs*
+Dynamic persistent volume provisioning with local-path-provisioner.
+- Local storage with automatic volume provisioning
+- Configurable storage paths per environment
+- Default storage class for easy PVC creation
 
 ### 📛 namespace
 Kubernetes namespace definitions for organizing applications.
@@ -28,8 +30,8 @@ Deploy infrastructure components before applications:
 # 1. Create namespaces
 kubectl apply -k infrastructure/namespace
 
-# 2. Setup storage
-kubectl apply -k infrastructure/storage
+# 2. Setup storage (dynamic provisioning)
+kubectl apply -k infrastructure/storage/overlays/prod
 
 # 3. Install ingress controller
 kubectl apply -k infrastructure/ingress-nginx
