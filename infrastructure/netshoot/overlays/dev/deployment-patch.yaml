@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netshoot
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+      - name: netshoot
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        # Development - enable host network for easier debugging
+        env:
+        - name: ENV
+          value: "development"
