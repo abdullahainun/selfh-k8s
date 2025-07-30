@@ -1,0 +1,270 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'apps/**'
+      - 'infrastructure/**'
+      - 'examples/**'
+
+jobs:
+  validate-manifests:
+    name: Validate Kubernetes Manifests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Kustomize
+      uses: imranismail/setup-kustomize@v2
+      with:
+        kustomize-version: "5.0.0"
+        
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+    
+    - name: Validate directory structure
+      run: |
+        echo "🔍 Validating directory structure..."
+        
+        # Function to validate base/overlays structure
+        validate_structure() {
+          local dir=$1
+          local type=$2
+          
+          if [ ! -d "$dir" ]; then
+            echo "❌ Directory $dir does not exist"
+            return 1
+          fi
+          
+          # Check for base directory
+          if [ ! -d "$dir/base" ]; then
+            echo "❌ Missing base directory in $dir"
+            return 1
+          fi
+          
+          # Check for base kustomization.yaml
+          if [ ! -f "$dir/base/kustomization.yaml" ]; then
+            echo "❌ Missing base/kustomization.yaml in $dir"
+            return 1
+          fi
+          
+          # Check for overlays directory (for apps and infrastructure)
+          if [[ "$type" == "app" || "$type" == "infrastructure" ]]; then
+            if [ ! -d "$dir/overlays" ]; then
+              echo "❌ Missing overlays directory in $dir"
+              return 1
+            fi
+            
+            # Check for dev and prod overlays
+            for env in dev prod; do
+              if [ ! -d "$dir/overlays/$env" ]; then
+                echo "❌ Missing overlays/$env directory in $dir"
+                return 1
+              fi
+              
+              if [ ! -f "$dir/overlays/$env/kustomization.yaml" ]; then
+                echo "❌ Missing overlays/$env/kustomization.yaml in $dir"
+                return 1
+              fi
+            done
+          fi
+          
+          echo "✅ Structure valid for $dir"
+          return 0
+        }
+        
+        # Validate apps structure
+        echo "📦 Validating apps structure..."
+        for category in apps/*/; do
+          if [ -d "$category" ]; then
+            for app in "$category"*/; do
+              if [ -d "$app" ]; then
+                validate_structure "$app" "app" || exit 1
+              fi
+            done
+          fi
+        done
+        
+        # Validate infrastructure structure  
+        echo "🏗️ Validating infrastructure structure..."
+        for component in infrastructure/*/; do
+          if [ -d "$component" ] && [ "$(basename "$component")" != "namespace" ]; then
+            validate_structure "$component" "infrastructure" || exit 1
+          fi
+        done
+        
+        echo "✅ All directory structures are valid!"
+
+    - name: Validate kustomization files
+      run: |
+        echo "🔧 Validating kustomization.yaml files..."
+        
+        # Function to validate kustomization file
+        validate_kustomization() {
+          local file=$1
+          
+          echo "Validating $file..."
+          
+          # Check if file exists and is valid YAML
+          if ! kubectl --dry-run=client apply -f "$file" &>/dev/null; then
+            echo "❌ Invalid YAML in $file"
+            return 1
+          fi
+          
+          # Check required fields
+          if ! yq eval '.apiVersion' "$file" | grep -q "kustomize.config.k8s.io"; then
+            echo "❌ Missing or invalid apiVersion in $file"
+            return 1
+          fi
+          
+          if ! yq eval '.kind' "$file" | grep -q "Kustomization"; then
+            echo "❌ Missing or invalid kind in $file"
+            return 1
+          fi
+          
+          # Check metadata.name exists
+          if [ "$(yq eval '.metadata.name' "$file")" = "null" ]; then
+            echo "❌ Missing metadata.name in $file"
+            return 1
+          fi
+          
+          echo "✅ Valid kustomization: $file"
+          return 0
+        }
+        
+        # Install yq for YAML processing
+        sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+        sudo chmod +x /usr/local/bin/yq
+        
+        # Find and validate all kustomization.yaml files
+        find . -name "kustomization.yaml" -type f | while read -r file; do
+          validate_kustomization "$file" || exit 1
+        done
+        
+        echo "✅ All kustomization files are valid!"
+
+    - name: Validate kustomize build
+      run: |
+        echo "🔨 Testing kustomize build for all overlays..."
+        
+        # Function to test kustomize build
+        test_build() {
+          local overlay_dir=$1
+          
+          echo "Testing build for $overlay_dir..."
+          
+          if kustomize build "$overlay_dir" >/dev/null 2>&1; then
+            echo "✅ Build successful: $overlay_dir"
+            return 0
+          else
+            echo "❌ Build failed: $overlay_dir"
+            kustomize build "$overlay_dir"
+            return 1
+          fi
+        }
+        
+        # Test all app overlays
+        for overlay in apps/*/overlays/*/; do
+          if [ -d "$overlay" ]; then
+            test_build "$overlay" || exit 1
+          fi
+        done
+        
+        # Test all infrastructure overlays
+        for overlay in infrastructure/*/overlays/*/; do
+          if [ -d "$overlay" ]; then
+            test_build "$overlay" || exit 1
+          fi
+        done
+        
+        # Test examples
+        for overlay in examples/*/overlays/*/; do
+          if [ -d "$overlay" ]; then
+            test_build "$overlay" || exit 1
+          fi
+        done
+        
+        echo "✅ All kustomize builds successful!"
+
+    - name: Validate Kubernetes manifests
+      run: |
+        echo "☸️ Validating Kubernetes manifest syntax..."
+        
+        # Function to validate K8s manifests
+        validate_k8s_manifest() {
+          local overlay_dir=$1
+          
+          echo "Validating K8s resources in $overlay_dir..."
+          
+          # Build and validate with kubectl
+          if kustomize build "$overlay_dir" | kubectl --dry-run=client apply -f - &>/dev/null; then
+            echo "✅ Valid K8s manifests: $overlay_dir"
+            return 0
+          else
+            echo "❌ Invalid K8s manifests: $overlay_dir"
+            kustomize build "$overlay_dir" | kubectl --dry-run=client apply -f -
+            return 1
+          fi
+        }
+        
+        # Validate all overlays
+        for overlay in apps/*/overlays/*/ infrastructure/*/overlays/*/ examples/*/overlays/*/; do
+          if [ -d "$overlay" ]; then
+            validate_k8s_manifest "$overlay" || exit 1
+          fi
+        done
+        
+        echo "✅ All Kubernetes manifests are valid!"
+
+    - name: Check for common labels
+      run: |
+        echo "🏷️ Checking for required common labels..."
+        
+        # Function to check common labels
+        check_labels() {
+          local kustomization_file=$1
+          
+          echo "Checking labels in $kustomization_file..."
+          
+          # Check if commonLabels exists
+          if yq eval '.commonLabels' "$kustomization_file" | grep -q "null"; then
+            echo "⚠️ No commonLabels found in $kustomization_file"
+            return 0  # Warning, not error
+          fi
+          
+          # Check for recommended labels
+          local managed_by=$(yq eval '.commonLabels."app.kubernetes.io/managed-by"' "$kustomization_file")
+          local part_of=$(yq eval '.commonLabels."app.kubernetes.io/part-of"' "$kustomization_file")
+          
+          if [ "$managed_by" != "null" ] && [ "$part_of" != "null" ]; then
+            echo "✅ Good labels in $kustomization_file"
+          else
+            echo "⚠️ Consider adding app.kubernetes.io/managed-by and app.kubernetes.io/part-of labels in $kustomization_file"
+          fi
+          
+          return 0
+        }
+        
+        # Check base kustomizations for labels
+        find . -name "kustomization.yaml" -path "*/base/*" | while read -r file; do
+          check_labels "$file"
+        done
+        
+        echo "✅ Label check completed!"
+
+    - name: Summary
+      run: |
+        echo "🎉 All validations passed!"
+        echo ""
+        echo "✅ Directory structure follows base/overlays pattern"
+        echo "✅ All kustomization.yaml files are valid"
+        echo "✅ All kustomize builds are successful"
+        echo "✅ All Kubernetes manifests are syntactically correct"
+        echo "✅ Common labels check completed"
+        echo ""
+        echo "🚀 This PR is ready for review!"
