@@ -61,3 +61,11 @@ metadata:
   labels:
     name: activepieces
     app.kubernetes.io/name: activepieces
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: waha
+  labels:
+    name: waha
+    app.kubernetes.io/name: waha
