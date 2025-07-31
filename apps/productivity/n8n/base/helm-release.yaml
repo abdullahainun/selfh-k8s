@@ -1,0 +1,60 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: n8n
+  namespace: n8n
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: n8n
+      version: "1.0.10"
+      sourceRef:
+        kind: HelmRepository
+        name: n8n
+        namespace: n8n
+      interval: 12h
+  values:
+    n8n:
+      config:
+        N8N_HOST: "localhost"
+        N8N_PORT: "5678"
+        N8N_PROTOCOL: "http"
+        WEBHOOK_URL: "http://localhost:5678/"
+        
+        # Database - using SQLite for simplicity
+        DB_TYPE: "sqlite"
+        DB_SQLITE_DATABASE: "/home/node/.n8n/database.sqlite"
+        
+        # Security
+        N8N_BASIC_AUTH_ACTIVE: "true"
+        N8N_BASIC_AUTH_USER: "admin"
+        N8N_BASIC_AUTH_PASSWORD: "admin123"
+        
+    deployment:
+      image:
+        repository: n8nio/n8n
+        tag: "1.67.1"
+        pullPolicy: IfNotPresent
+      
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "2Gi"
+      
+      persistence:
+        enabled: true
+        storageClass: "local-path"
+        size: "10Gi"
+        mountPath: "/home/node/.n8n"
+    
+    service:
+      type: ClusterIP
+      port: 5678
+      targetPort: 5678
+    
+    ingress:
+      enabled: false
