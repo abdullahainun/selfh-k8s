@@ -17,9 +17,12 @@ spec:
         namespace: monitoring
       interval: 12h
   values:
+    admin:
+      existingSecret: grafana-admin
+      userKey: admin-user  
+      passwordKey: admin-password
     env:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin123
     
     persistence:
       enabled: true

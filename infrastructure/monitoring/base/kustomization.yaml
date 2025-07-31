@@ -18,7 +18,8 @@ resources:
   - prometheus-helm-release.yaml
   - grafana-helm-release.yaml
   
-  # Dashboards and Configuration
+  # Secrets and Configuration
+  - grafana-sealed-secret.yaml
   - custom-dashboard-configmap.yaml
   
   # Native Kubernetes Resources

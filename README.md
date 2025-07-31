@@ -19,6 +19,7 @@
 - [Quick Start](#quick-start)
 - [Infrastructure](#infrastructure)
 - [Applications](#applications)
+- [Security Setup](#security-setup)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -96,7 +97,27 @@ A complete Kubernetes homelab template with production-ready infrastructure and 
    kubectl apply -k apps/productivity/excalidraw/overlays/prod/
    ```
 
-> **⚠️ Important:** Configure secrets and SSL certificates before deploying applications. See [docs/](docs/) for detailed setup.
+> **⚠️ Important:** Configure secrets and SSL certificates before deploying applications. See [SECRETS_SETUP.md](SECRETS_SETUP.md) for detailed setup.
+
+## Security Setup
+
+This repository uses **SealedSecrets** for secure credential management. When deploying to a new cluster:
+
+1. **Install SealedSecrets controller**
+2. **Generate your own encrypted secrets** 
+3. **Update secret manifests** with your encrypted values
+
+📋 **Detailed Guide:** [SECRETS_SETUP.md](SECRETS_SETUP.md)
+
+### Required Secrets
+
+| Service | Secret Name | Keys | Description |
+|---------|-------------|------|-------------|
+| Grafana | `grafana-admin` | `admin-user`, `admin-password` | Grafana admin credentials |
+| PostgreSQL | `postgresql-credentials` | `postgres-password` | Database admin password |
+| MySQL | `mysql-credentials` | `mysql-root-password` | Database root password |
+
+> **🔐 Security Note:** Each cluster generates unique encryption keys. SealedSecrets from one cluster will not work on another.
 
 ## Infrastructure
 
