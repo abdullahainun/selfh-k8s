@@ -12,6 +12,8 @@
   </p>
 </div>
 
+> **🚧 Development Status:** This project is actively under development. New applications and features are being added regularly. While the infrastructure is production-ready, expect frequent updates and improvements. Check the [Issues](https://github.com/abdullahainun/selfh-k8s/issues) for current roadmap and known issues.
+
 ## Table of Contents
 
 - [About](#about)
