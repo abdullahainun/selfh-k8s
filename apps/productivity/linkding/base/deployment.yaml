@@ -32,9 +32,15 @@ spec:
         - name: LD_CONTEXT_PATH
           value: ""
         - name: LD_SUPERUSER_NAME
-          value: "admin"
+          valueFrom:
+            secretKeyRef:
+              name: linkding-credentials
+              key: username
         - name: LD_SUPERUSER_PASSWORD
-          value: "linkding123"
+          valueFrom:
+            secretKeyRef:
+              name: linkding-credentials
+              key: password
         # Features
         - name: LD_DISABLE_BACKGROUND_TASKS
           value: "False"
