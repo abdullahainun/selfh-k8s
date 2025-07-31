@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: activepieces
+  namespace: activepieces
+  labels:
+    app: activepieces
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: activepieces
+  template:
+    metadata:
+      labels:
+        app: activepieces
+    spec:
+      containers:
+      - name: activepieces
+        image: activepieces/activepieces:0.30.0
+        ports:
+        - containerPort: 80
+        env:
+        - name: AP_ENVIRONMENT
+          value: "prod"
+        - name: AP_FRONTEND_URL
+          value: "http://localhost:8080"
+        - name: AP_DB_TYPE
+          value: "SQLITE3"
+        - name: AP_QUEUE_MODE
+          value: "MEMORY"
+        - name: AP_ENCRYPTION_KEY
+          value: "activepieces-encryption-key-change-me"
+        - name: AP_JWT_SECRET
+          value: "activepieces-jwt-secret-change-me"
+        - name: AP_TELEMETRY_ENABLED
+          value: "false"
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "1"
+            memory: "2Gi"
+        volumeMounts:
+        - name: data
+          mountPath: /usr/app/packages/server/dist/data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: activepieces-data

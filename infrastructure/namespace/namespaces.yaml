@@ -53,3 +53,11 @@ metadata:
   labels:
     name: n8n
     app.kubernetes.io/name: n8n
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: activepieces
+  labels:
+    name: activepieces
+    app.kubernetes.io/name: activepieces
