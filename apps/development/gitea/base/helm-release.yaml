@@ -1,0 +1,169 @@
+# Gitea HelmRelease
+# Self-hosted Git service with web interface using official Helm chart
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: gitea
+  namespace: gitea
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: gitea
+      version: '*'
+      sourceRef:
+        kind: HelmRepository
+        name: gitea
+        namespace: gitea
+      interval: 12h
+  values:
+    # Image configuration
+    image:
+      registry: ""
+      repository: gitea/gitea
+      tag: ""
+      pullPolicy: IfNotPresent
+
+    # Service configuration
+    service:
+      http:
+        type: ClusterIP
+        port: 3000
+      ssh:
+        type: ClusterIP
+        port: 22
+
+    # Ingress configuration
+    ingress:
+      enabled: true
+      className: nginx
+      annotations:
+        nginx.ingress.kubernetes.io/ssl-redirect: "true"
+        nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+        nginx.ingress.kubernetes.io/proxy-body-size: "4G"
+        nginx.ingress.kubernetes.io/proxy-buffering: "off"
+        nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+      hosts:
+        - host: gitea.example.com
+          paths:
+            - path: /
+              pathType: Prefix
+      tls:
+        - secretName: gitea-tls
+          hosts:
+            - gitea.example.com
+
+    # Persistence configuration
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: local-path
+      accessModes:
+        - ReadWriteOnce
+
+    # External PostgreSQL database (disable built-in PostgreSQL)
+    postgresql-ha:
+      enabled: false
+
+    postgresql:
+      enabled: false
+
+    # External database configuration
+    gitea:
+      config:
+        database:
+          DB_TYPE: postgres
+          HOST: postgresql.postgresql.svc.cluster.local:5432
+          NAME: gitea
+          USER: gitea
+          PASSWD: gitea-secure-password-2024
+        security:
+          SECRET_KEY: gitea-secret-key-2024
+        server:
+          DOMAIN: gitea.example.com
+          SSH_DOMAIN: gitea.example.com
+          ROOT_URL: https://gitea.example.com
+          DISABLE_SSH: false
+          SSH_PORT: 22
+          LFS_START_SERVER: true
+        repository:
+          ROOT: /data/git/repositories
+        log:
+          LEVEL: Info
+        session:
+          PROVIDER: memory
+        cache:
+          ENABLED: true
+          ADAPTER: memory
+        webhook:
+          ALLOWED_HOST_LIST: "*"
+
+      # Admin user configuration
+      admin:
+        username: gitea-admin
+        password: gitea-admin-secure-token-2024
+        email: admin@gitea.example.com
+
+    # Resource configuration
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+    # Security context
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+      readOnlyRootFilesystem: false
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000
+      seccompProfile:
+        type: RuntimeDefault
+
+    podSecurityContext:
+      runAsUser: 1000
+      runAsGroup: 1000
+      runAsNonRoot: true
+      fsGroup: 1000
+      seccompProfile:
+        type: RuntimeDefault
+
+    # Probes configuration
+    livenessProbe:
+      enabled: true
+      initialDelaySeconds: 200
+      timeoutSeconds: 1
+      periodSeconds: 10
+      successThreshold: 1
+      failureThreshold: 10
+
+    readinessProbe:
+      enabled: true
+      initialDelaySeconds: 5
+      timeoutSeconds: 1
+      periodSeconds: 10
+      successThreshold: 1
+      failureThreshold: 3
+
+    # Service account
+    serviceAccount:
+      create: true
+      annotations: {}
+
+    # Deployment strategy
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxSurge: 100%
+        maxUnavailable: 0
+
+    # Node selector and tolerations
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}

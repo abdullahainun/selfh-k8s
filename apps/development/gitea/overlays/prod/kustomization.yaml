@@ -1,0 +1,41 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: HelmRelease
+      name: gitea
+    patch: |-
+      - op: replace
+        path: /spec/values/gitea/config/server/DOMAIN
+        value: "gitea.yourdomain.com"  # Update with your actual domain
+      - op: replace
+        path: /spec/values/gitea/config/server/SSH_DOMAIN
+        value: "gitea.yourdomain.com"  # Update with your actual domain
+      - op: replace
+        path: /spec/values/gitea/config/server/ROOT_URL
+        value: "https://gitea.yourdomain.com"  # Update with your actual domain
+      - op: replace
+        path: /spec/values/ingress/hosts/0/host
+        value: "gitea.yourdomain.com"  # Update with your actual domain
+      - op: replace
+        path: /spec/values/ingress/tls/0/hosts/0
+        value: "gitea.yourdomain.com"  # Update with your actual domain
+      - op: replace
+        path: /spec/values/gitea/admin/email
+        value: "admin@gitea.yourdomain.com"  # Update with your actual domain
+      - op: replace
+        path: /spec/values/persistence/size
+        value: "50Gi"
+      - op: replace
+        path: /spec/values/resources/requests/cpu
+        value: "1000m"
+      - op: replace
+        path: /spec/values/resources/limits/cpu
+        value: "2000m"
+      - op: replace
+        path: /spec/values/resources/limits/memory
+        value: "2Gi"
