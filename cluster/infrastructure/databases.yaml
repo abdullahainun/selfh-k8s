@@ -1,0 +1,63 @@
+# Database Layer
+# PostgreSQL, MySQL, Redis databases
+# Depends on core infrastructure being ready
+
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure-postgresql
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: "./infrastructure/postgresql/overlays/prod"
+  prune: true
+  dependsOn:
+    - name: infrastructure-cert-manager
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: postgresql
+      namespace: postgresql
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure-mysql
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: "./infrastructure/mysql/overlays/prod"
+  prune: true
+  dependsOn:
+    - name: infrastructure-cert-manager
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: mysql
+      namespace: mysql
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure-redis
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: "./infrastructure/redis/overlays/prod"
+  prune: true
+  dependsOn:
+    - name: infrastructure-cert-manager
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: redis-master
+      namespace: redis

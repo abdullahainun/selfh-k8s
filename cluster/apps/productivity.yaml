@@ -1,0 +1,83 @@
+# Productivity & Automation Applications
+# Workflow automation, business processes, collaboration tools
+# Depends on infrastructure (databases, monitoring) being ready
+
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps-productivity-n8n
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: "./apps/productivity/n8n/overlays/prod"
+  prune: true
+  dependsOn:
+    - name: infrastructure-postgresql
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: n8n
+      namespace: n8n
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps-productivity-activepieces
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: "./apps/productivity/activepieces/overlays/prod"
+  prune: true
+  dependsOn:
+    - name: infrastructure-monitoring
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: activepieces
+      namespace: activepieces
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps-productivity-waha
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: "./apps/productivity/waha/overlays/prod"
+  prune: true
+  dependsOn:
+    - name: infrastructure-monitoring
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: waha
+      namespace: waha
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps-productivity-excalidraw
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: "./apps/productivity/excalidraw/overlays/prod"
+  prune: true
+  dependsOn:
+    - name: infrastructure-monitoring
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: excalidraw
+      namespace: excalidraw

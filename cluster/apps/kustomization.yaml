@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Application deployments organized by category
+# These depend on infrastructure being ready
+
+resources:
+  - development.yaml
+  - productivity.yaml
+  - security.yaml
