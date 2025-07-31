@@ -1,0 +1,113 @@
+# Custom Grafana Dashboard ConfigMap
+# Automatically discovered by Grafana sidecar container
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  custom-dashboard.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Custom Homelab Dashboard",
+        "uid": "custom-homelab",
+        "version": 1,
+        "schemaVersion": 27,
+        "panels": [
+          {
+            "id": 1,
+            "title": "CPU Usage %",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "100 - (avg by(instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+                "refId": "A",
+                "legendFormat": "CPU Usage"
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 6,
+              "x": 0,
+              "y": 0
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percent",
+                "min": 0,
+                "max": 100
+              }
+            }
+          },
+          {
+            "id": 2,
+            "title": "Memory Usage %",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "100 * (1 - ((node_memory_MemAvailable_bytes) / (node_memory_MemTotal_bytes)))",
+                "refId": "A",
+                "legendFormat": "Memory Usage"
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 6,
+              "x": 6,
+              "y": 0
+            },
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percent",
+                "min": 0,
+                "max": 100
+              }
+            }
+          },
+          {
+            "id": 3,
+            "title": "Pod Count",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(kube_pod_info)",
+                "refId": "A",
+                "legendFormat": "Total Pods"
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 6,
+              "x": 12,
+              "y": 0
+            }
+          },
+          {
+            "id": 4,
+            "title": "Node Count",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(kube_node_info)",
+                "refId": "A",
+                "legendFormat": "Total Nodes"
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 6,
+              "x": 18,
+              "y": 0
+            }
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "10s"
+      }
+    }
