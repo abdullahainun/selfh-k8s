@@ -1,0 +1,10 @@
+# Gitea Helm Repository
+# Official Gitea Helm charts
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: HelmRepository
+metadata:
+  name: gitea
+  namespace: gitea
+spec:
+  interval: 24h
+  url: https://dl.gitea.com/charts

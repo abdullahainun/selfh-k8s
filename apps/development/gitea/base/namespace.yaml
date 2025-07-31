@@ -1,0 +1,10 @@
+# Gitea Namespace
+# Self-hosted Git service with web interface
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gitea
+  labels:
+    app.kubernetes.io/name: gitea
+    app.kubernetes.io/component: development
+    app.kubernetes.io/part-of: selfh-k8s

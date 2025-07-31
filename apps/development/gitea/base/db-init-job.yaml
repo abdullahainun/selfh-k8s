@@ -1,0 +1,67 @@
+# Database initialization job for Gitea
+# Creates database and user in PostgreSQL
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gitea-db-init
+  namespace: gitea
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: db-init
+        image: postgres:16-alpine
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 999
+          runAsGroup: 999
+          seccompProfile:
+            type: RuntimeDefault
+        env:
+        - name: PGHOST
+          value: "postgresql.postgresql.svc.cluster.local"
+        - name: PGPORT
+          value: "5432"
+        - name: PGUSER
+          value: "postgres"
+        - name: PGPASSWORD
+          value: "password123"
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "Creating Gitea database and user..."
+          
+          # Create database
+          createdb -h $PGHOST -p $PGPORT -U $PGUSER gitea || echo "Database already exists"
+          
+          # Create user and grant permissions
+          psql -h $PGHOST -p $PGPORT -U $PGUSER -d postgres << EOF
+          DO \$\$
+          BEGIN
+            IF NOT EXISTS (SELECT FROM pg_catalog.pg_user WHERE usename = 'gitea') THEN
+              CREATE USER gitea WITH PASSWORD 'gitea-secure-password-2024';
+            END IF;
+          END
+          \$\$;
+          
+          GRANT ALL PRIVILEGES ON DATABASE gitea TO gitea;
+          
+          \c gitea
+          GRANT ALL ON SCHEMA public TO gitea;
+          GRANT CREATE ON SCHEMA public TO gitea;
+          EOF
+          
+          echo "Database setup completed successfully!"
