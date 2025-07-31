@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: nextcloud-base
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+resources:
+  - namespace.yaml
+  - helm-repository.yaml
+  - sealed-secrets.yaml
+  - db-init-job.yaml
+  - helm-release.yaml
+
+namespace: nextcloud
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: nextcloud
+      app.kubernetes.io/component: productivity
+      app.kubernetes.io/part-of: selfh-k8s
