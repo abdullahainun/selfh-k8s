@@ -1,0 +1,77 @@
+# Core Infrastructure Components
+# Storage, Networking, Security, Certificates
+# These must be deployed first as other components depend on them
+
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure-storage
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: "./infrastructure/storage/overlays/prod"
+  prune: true
+  wait: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure-metallb
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: "./infrastructure/metallb/overlays/prod"
+  prune: true
+  dependsOn:
+    - name: infrastructure-storage
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure-ingress-nginx
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: "./infrastructure/ingress-nginx/overlays/prod"
+  prune: true
+  dependsOn:
+    - name: infrastructure-metallb
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure-sealed-secrets
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: "./infrastructure/sealed-secrets/overlays/prod"
+  prune: true
+  dependsOn:
+    - name: infrastructure-ingress-nginx
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure-cert-manager
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: "./infrastructure/cert-manager/overlays/prod"
+  prune: true
+  dependsOn:
+    - name: infrastructure-sealed-secrets
