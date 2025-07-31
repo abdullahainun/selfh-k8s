@@ -1,0 +1,62 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: jenkins
+  namespace: jenkins
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: jenkins
+      version: "5.7.12"
+      sourceRef:
+        kind: HelmRepository
+        name: jenkins
+        namespace: jenkins
+      interval: 12h
+  values:
+    controller:
+      serviceType: ClusterIP
+      jenkinsUrl: ""
+      jenkinsUriPrefix: ""
+      
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "2"
+          memory: "4Gi"
+      
+      persistence:
+        enabled: true
+        size: "20Gi"
+        storageClass: "local-path"
+      
+      serviceAccount:
+        create: true
+        annotations: {}
+      
+      securityRealm: |-
+        <securityRealm class="hudson.security.SecurityRealm$None"/>
+      
+      authorizationStrategy: |-
+        <authorizationStrategy class="hudson.security.AuthorizationStrategy$Unsecured"/>
+      
+      installPlugins:
+        - kubernetes
+        - workflow-aggregator
+      
+      sidecars:
+        configAutoReload:
+          enabled: true
+          
+    agent:
+      enabled: true
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "256Mi"
+        limits:
+          cpu: "500m"
+          memory: "1Gi"
