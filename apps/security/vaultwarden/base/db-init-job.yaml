@@ -1,0 +1,67 @@
+# Database initialization job for Vaultwarden
+# Creates database and user in PostgreSQL
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vaultwarden-db-init
+  namespace: vaultwarden
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: db-init
+        image: postgres:16-alpine
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 999
+          runAsGroup: 999
+          seccompProfile:
+            type: RuntimeDefault
+        env:
+        - name: PGHOST
+          value: "postgresql.postgresql.svc.cluster.local"
+        - name: PGPORT
+          value: "5432"
+        - name: PGUSER
+          value: "postgres"
+        - name: PGPASSWORD
+          value: "password123"  # Use the known PostgreSQL password
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "Creating Vaultwarden database and user..."
+          
+          # Create database
+          createdb -h $PGHOST -p $PGPORT -U $PGUSER vaultwarden || echo "Database already exists"
+          
+          # Create user and grant permissions
+          psql -h $PGHOST -p $PGPORT -U $PGUSER -d postgres << EOF
+          DO \$\$
+          BEGIN
+            IF NOT EXISTS (SELECT FROM pg_catalog.pg_user WHERE usename = 'vaultwarden') THEN
+              CREATE USER vaultwarden WITH PASSWORD 'vw-secure-password-2024';
+            END IF;
+          END
+          \$\$;
+          
+          GRANT ALL PRIVILEGES ON DATABASE vaultwarden TO vaultwarden;
+          
+          \c vaultwarden
+          GRANT ALL ON SCHEMA public TO vaultwarden;
+          GRANT CREATE ON SCHEMA public TO vaultwarden;
+          EOF
+          
+          echo "Database setup completed successfully!"
