@@ -69,3 +69,11 @@ metadata:
   labels:
     name: waha
     app.kubernetes.io/name: waha
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: linkding
+  labels:
+    name: linkding
+    app.kubernetes.io/name: linkding
