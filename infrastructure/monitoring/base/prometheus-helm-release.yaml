@@ -1,0 +1,59 @@
+# Prometheus Server Helm Release
+# Metrics collection and storage
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: prometheus
+      version: "25.8.0"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: monitoring
+      interval: 12h
+  values:
+    server:
+      enabled: true
+      image:
+        repository: prom/prometheus
+        tag: v2.53.0
+      
+      # Remove query log arguments to avoid permission issues
+      extraArgs: {}
+        
+      persistentVolume:
+        enabled: true
+        size: 50Gi
+        storageClass: local-path
+        
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+          
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        
+      retention: "30d"
+      
+    alertmanager:
+      enabled: false
+      
+    kube-state-metrics:
+      enabled: false
+      
+    prometheus-node-exporter:
+      enabled: false
+      
+    prometheus-pushgateway:
+      enabled: false

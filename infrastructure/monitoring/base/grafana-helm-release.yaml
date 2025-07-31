@@ -1,0 +1,153 @@
+# Grafana Helm Release  
+# Visualization and dashboards for metrics and logs
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: grafana
+      version: "8.7.0"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: monitoring
+      interval: 12h
+  values:
+    admin:
+      existingSecret: grafana-admin
+      userKey: admin-user  
+      passwordKey: admin-password
+    env:
+      GF_SECURITY_ADMIN_USER: admin
+    
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClassName: local-path
+      
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+        
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 472
+      runAsGroup: 472
+      seccompProfile:
+        type: RuntimeDefault
+        
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+      readOnlyRootFilesystem: false
+      runAsNonRoot: true
+      runAsUser: 472
+      runAsGroup: 472
+      seccompProfile:
+        type: RuntimeDefault
+        
+    service:
+      type: ClusterIP
+      port: 3000
+      
+    # Datasources configuration
+    datasources:
+      datasources.yaml:
+        apiVersion: 1
+        datasources:
+        - name: Prometheus
+          type: prometheus
+          access: proxy
+          url: http://prometheus-server
+          isDefault: true
+          editable: true
+        - name: Loki
+          type: loki
+          access: proxy
+          url: http://loki.loki.svc.cluster.local:3100
+          editable: true
+          jsonData:
+            maxLines: 1000
+    
+    # Dashboard provisioning
+    dashboardProviders:
+      dashboardproviders.yaml:
+        apiVersion: 1
+        providers:
+        - name: 'default'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+        - name: 'kubernetes'
+          orgId: 1
+          folder: 'Kubernetes'
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/kubernetes
+            
+    dashboards:
+      default:
+        prometheus-stats:
+          gnetId: 2
+          revision: 2
+          datasource: Prometheus
+        node-exporter:
+          gnetId: 1860
+          revision: 37
+          datasource: Prometheus
+      kubernetes:
+        kubernetes-cluster-overview:
+          gnetId: 7249
+          revision: 1
+          datasource: Prometheus
+        kubernetes-pod-overview:
+          gnetId: 6417
+          revision: 1
+          datasource: Prometheus
+    
+    # Enable sidecar for dashboard discovery
+    sidecar:
+      dashboards:
+        enabled: true
+        label: grafana_dashboard
+        labelValue: "1"
+        folder: /tmp/dashboards
+        searchNamespace: monitoring
+        provider:
+          allowUiUpdates: true
+          disableDelete: false
+          foldersFromFilesStructure: true
+            
+    # Grafana configuration
+    grafana.ini:
+      server:
+        http_port: 3000
+        domain: grafana.homelab.local
+      security:
+        admin_user: admin
+      users:
+        allow_sign_up: false
+        allow_org_create: false
+        auto_assign_org: true
+        auto_assign_org_role: Viewer
+      auth.anonymous:
+        enabled: false
+      log:
+        mode: console
+        level: info

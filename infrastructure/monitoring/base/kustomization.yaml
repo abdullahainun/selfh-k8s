@@ -9,8 +9,20 @@ metadata:
 resources:
   # Prometheus Operator CRDs and deployment
   - https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.75.2/bundle.yaml
-  - prometheus.yaml
-  - grafana.yaml
+  
+  # Helm Repositories
+  - prometheus-helm-repository.yaml
+  - grafana-helm-repository.yaml
+  
+  # Helm Releases
+  - prometheus-helm-release.yaml
+  - grafana-helm-release.yaml
+  
+  # Secrets and Configuration
+  - grafana-sealed-secret.yaml
+  - custom-dashboard-configmap.yaml
+  
+  # Native Kubernetes Resources
   - alertmanager.yaml
   - node-exporter.yaml
   - kube-state-metrics.yaml
