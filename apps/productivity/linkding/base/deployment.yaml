@@ -1,0 +1,79 @@
+# Linkding - A self-hosted bookmark service
+# Source: https://github.com/sissbruecker/linkding
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: linkding
+  namespace: linkding
+  labels:
+    app: linkding
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: linkding
+  template:
+    metadata:
+      labels:
+        app: linkding
+    spec:
+      containers:
+      - name: linkding
+        image: sissbruecker/linkding:latest
+        ports:
+        - containerPort: 9090
+        env:
+        # Basic settings
+        - name: LD_CONTAINER_NAME
+          value: "linkding"
+        - name: LD_HOST_PORT
+          value: "9090"
+        # Context and superuser
+        - name: LD_CONTEXT_PATH
+          value: ""
+        - name: LD_SUPERUSER_NAME
+          valueFrom:
+            secretKeyRef:
+              name: linkding-credentials
+              key: username
+        - name: LD_SUPERUSER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: linkding-credentials
+              key: password
+        # Features
+        - name: LD_DISABLE_BACKGROUND_TASKS
+          value: "False"
+        - name: LD_DISABLE_URL_VALIDATION
+          value: "False"
+        - name: LD_ENABLE_AUTH_PROXY
+          value: "False"
+        # Database (using default SQLite)
+        - name: LD_DB_ENGINE
+          value: "sqlite"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
+        volumeMounts:
+        - name: data
+          mountPath: /etc/linkding/data
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9090
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9090
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: linkding-data
