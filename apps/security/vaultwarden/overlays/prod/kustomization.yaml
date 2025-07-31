@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: Deployment
+      name: vaultwarden
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/4/value
+        value: "https://vaultwarden.yourdomain.com"  # Update with your actual domain
+      - op: replace
+        path: /spec/template/spec/containers/0/env/5/value
+        value: "false"  # Disable signups in production
+  - target:
+      kind: Ingress
+      name: vaultwarden
+    patch: |-
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: "vaultwarden.yourdomain.com"  # Update with your actual domain
+      - op: replace
+        path: /spec/rules/0/host
+        value: "vaultwarden.yourdomain.com"  # Update with your actual domain

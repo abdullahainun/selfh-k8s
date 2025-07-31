@@ -1,0 +1,17 @@
+# Vaultwarden Data Storage
+# Persistent storage for Vaultwarden data and attachments
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vaultwarden-data
+  namespace: vaultwarden
+  labels:
+    app.kubernetes.io/name: vaultwarden
+    app.kubernetes.io/component: security
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
