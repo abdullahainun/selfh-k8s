@@ -4,3 +4,7 @@ metadata:
   name: loki
   labels:
     name: loki
+    # Pod Security Standards - Promtail needs privileged access for hostPath volumes
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
