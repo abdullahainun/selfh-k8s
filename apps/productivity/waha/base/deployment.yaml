@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: waha
+  namespace: waha
+  labels:
+    app: waha
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: waha
+  template:
+    metadata:
+      labels:
+        app: waha
+    spec:
+      containers:
+      - name: waha
+        image: devlikeapro/waha:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: WAHA_WORKER_ID
+          value: "waha-k8s"
+        - name: WAHA_PRINT_QR
+          value: "False"
+        - name: WHATSAPP_API_HOSTNAME
+          value: "0.0.0.0"
+        - name: WHATSAPP_API_PORT
+          value: "3000"
+        - name: WAHA_LOCAL_STORE_BASE_DIR
+          value: "/app/.sessions"
+        - name: TZ
+          value: "Asia/Jakarta"
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "1"
+            memory: "2Gi"
+        volumeMounts:
+        - name: sessions
+          mountPath: /app/.sessions
+        livenessProbe:
+          httpGet:
+            path: /api/server/status
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /api/server/status
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      volumes:
+      - name: sessions
+        persistentVolumeClaim:
+          claimName: waha-sessions
