@@ -37,3 +37,11 @@ metadata:
   labels:
     name: homelab-apps
     app.kubernetes.io/name: homelab-apps
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jenkins
+  labels:
+    name: jenkins
+    app.kubernetes.io/name: jenkins
