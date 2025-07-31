@@ -1,0 +1,10 @@
+# ownCloud Namespace
+# Self-hosted file storage and collaboration platform
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: owncloud
+  labels:
+    app.kubernetes.io/name: owncloud
+    app.kubernetes.io/component: productivity
+    app.kubernetes.io/part-of: selfh-k8s

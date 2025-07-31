@@ -1,0 +1,122 @@
+# ownCloud HelmRelease
+# Self-hosted file storage and collaboration platform using official Helm chart
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: owncloud
+  namespace: owncloud
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: owncloud
+      version: '*'
+      sourceRef:
+        kind: HelmRepository
+        name: owncloud
+        namespace: owncloud
+      interval: 12h
+  values:
+    # ownCloud configuration
+    owncloud:
+      domain: owncloud.example.com
+      admin:
+        username:
+          valueFrom:
+            secretKeyRef:
+              name: owncloud-admin
+              key: username
+        password:
+          valueFrom:
+            secretKeyRef:
+              name: owncloud-admin
+              key: password
+
+    # External Database configuration (PostgreSQL)
+    externalDatabase:
+      host: postgresql.postgresql.svc.cluster.local
+      name: owncloud
+      username: owncloud
+      password:
+        valueFrom:
+          secretKeyRef:
+            name: owncloud-db
+            key: password
+
+    # Ingress configuration
+    ingress:
+      enabled: true
+      className: nginx
+      annotations:
+        nginx.ingress.kubernetes.io/ssl-redirect: "true"
+        nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+        nginx.ingress.kubernetes.io/proxy-body-size: "4G"
+        nginx.ingress.kubernetes.io/proxy-buffering: "off"
+        nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+      hosts:
+        - host: owncloud.example.com
+          paths:
+            - path: /
+              pathType: Prefix
+      tls:
+        - secretName: owncloud-tls
+          hosts:
+            - owncloud.example.com
+
+    # Persistence configuration
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: local-path
+      accessMode: ReadWriteOnce
+
+    # Resource configuration
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+    # Security context (Pod Security Standards compliant)
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 33  # www-data user
+      runAsGroup: 33
+      fsGroup: 33
+      seccompProfile:
+        type: RuntimeDefault
+
+    # Service configuration
+    service:
+      type: ClusterIP
+      port: 8080
+
+    # Probes configuration
+    livenessProbe:
+      enabled: true
+      initialDelaySeconds: 60
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 3
+
+    readinessProbe:
+      enabled: true
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+    # Environment variables for trusted proxies
+    extraEnv:
+      - name: OWNCLOUD_TRUSTED_PROXIES
+        value: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+      - name: OWNCLOUD_OVERWRITE_PROTOCOL
+        value: "https"
+      - name: OWNCLOUD_OVERWRITE_HOST
+        value: "owncloud.example.com"
+      - name: OWNCLOUD_OVERWRITE_WEBROOT
+        value: ""
+      - name: OWNCLOUD_OVERWRITE_CLIURL
+        value: "https://owncloud.example.com"

@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: HelmRelease
+      name: owncloud
+    patch: |-
+      - op: replace
+        path: /spec/values/owncloud/domain
+        value: "owncloud-dev.yourdomain.com"
+      - op: replace
+        path: /spec/values/ingress/hosts/0/host
+        value: "owncloud-dev.yourdomain.com"
+      - op: replace
+        path: /spec/values/ingress/tls/0/hosts/0
+        value: "owncloud-dev.yourdomain.com"
+      - op: replace
+        path: /spec/values/extraEnv/2/value
+        value: "owncloud-dev.yourdomain.com"
+      - op: replace
+        path: /spec/values/extraEnv/4/value
+        value: "https://owncloud-dev.yourdomain.com"
+      - op: replace
+        path: /spec/values/persistence/size
+        value: "10Gi"
+      - op: replace
+        path: /spec/values/resources/limits/memory
+        value: "768Mi"
