@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: minio-backup-storage
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+resources:
+  - minio-deployment.yaml
+  - backup-storage-location.yaml
+
+labels:
+  - pairs:
+      storage-type: in-cluster
+      app.kubernetes.io/name: minio
+      app.kubernetes.io/component: backup-storage

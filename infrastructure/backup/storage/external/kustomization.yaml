@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: external-storage-config
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+resources:
+  - backup-storage-location.yaml
+
+labels:
+  - pairs:
+      storage-type: external
+      app.kubernetes.io/component: backup-storage

@@ -1,0 +1,149 @@
+# Examples of restore operations
+
+---
+# Example 1: Full cluster restore
+apiVersion: velero.io/v1
+kind: Restore
+metadata:
+  name: full-cluster-restore
+  namespace: velero
+spec:
+  # Specify backup to restore from
+  backupName: weekly-full-backup-20240130120000
+  
+  # Restore everything
+  includedNamespaces: []
+  excludedNamespaces: []
+  
+  # Include cluster resources
+  includeClusterResources: true
+  
+  # Restore existing resources policy
+  existingResourcePolicy: update
+  
+  # Restore all volumes
+  restorePVs: true
+
+---
+# Example 2: Selective namespace restore
+apiVersion: velero.io/v1
+kind: Restore
+metadata:
+  name: app-restore
+  namespace: velero
+spec:
+  # Restore from specific backup
+  backupName: daily-backup-20240130020000
+  
+  # Only restore specific namespace
+  includedNamespaces:
+  - "myapp"
+  
+  # Don't restore cluster resources
+  includeClusterResources: false
+  
+  # Handle existing resources
+  existingResourcePolicy: update
+  
+  # Namespace mapping (restore to different namespace)
+  namespaceMapping:
+    myapp: myapp-restored
+  
+  # Restore persistent volumes
+  restorePVs: true
+
+---
+# Example 3: Resource-specific restore
+apiVersion: velero.io/v1
+kind: Restore
+metadata:
+  name: config-restore
+  namespace: velero
+spec:
+  backupName: config-backup-20240130100000
+  
+  # Only restore specific resource types
+  includedResources:
+  - "configmaps"
+  - "secrets"
+  
+  # Exclude volumes
+  restorePVs: false
+  
+  # Label selector for specific resources
+  labelSelector:
+    matchLabels:
+      component: configuration
+
+---
+# Example 4: Cross-cluster restore
+apiVersion: velero.io/v1
+kind: Restore
+metadata:
+  name: cross-cluster-restore
+  namespace: velero
+spec:
+  # Restore from backup in different storage location
+  backupName: migration-backup-20240130000000
+  
+  # Map to new namespaces in target cluster
+  namespaceMapping:
+    production: staging
+    myapp-prod: myapp-dev
+  
+  # Update existing resources in target cluster
+  existingResourcePolicy: update
+  
+  # Include cluster resources for full migration
+  includeClusterResources: true
+  
+  # Restore all data
+  restorePVs: true
+  
+  # Post-restore hooks for application startup
+  hooks:
+    resources:
+    - name: database-restore-hook
+      includedNamespaces:
+      - "staging"
+      includedResources:
+      - "pods"
+      labelSelector:
+        matchLabels:
+          app: postgres
+      post:
+      - exec:
+          container: postgres
+          command:
+          - /bin/bash
+          - -c
+          - "psql -U postgres -c 'VACUUM ANALYZE;'"
+          timeout: 300s
+
+---
+# Example 5: Point-in-time restore with verification
+apiVersion: velero.io/v1
+kind: Restore
+metadata:
+  name: point-in-time-restore
+  namespace: velero
+spec:
+  # Restore from specific backup timestamp
+  backupName: daily-backup-20240129020000
+  
+  # Target specific application
+  includedNamespaces:
+  - "database"
+  
+  # Restore to different namespace for testing
+  namespaceMapping:
+    database: database-recovery
+  
+  # Don't overwrite existing resources
+  existingResourcePolicy: none
+  
+  # Restore volumes
+  restorePVs: true
+  
+  # Preserve node assignments for local-path volumes
+  preserveNodePorts: true

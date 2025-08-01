@@ -1,0 +1,38 @@
+---
+# External MinIO/S3 Storage Configuration
+apiVersion: velero.io/v1
+kind: BackupStorageLocation
+metadata:
+  name: default
+  namespace: velero
+spec:
+  provider: aws
+  objectStorage:
+    bucket: k8s-backups  # CHANGE THIS: Your bucket name
+    prefix: selfh-k8s    # Optional: prefix for organization
+  config:
+    # For External MinIO
+    region: us-east-1     # Required but can be any value for MinIO
+    s3ForcePathStyle: "true"
+    s3Url: http://minio.example.com:9000  # CHANGE THIS: Your MinIO endpoint
+    
+    # For AWS S3 (uncomment and modify if using AWS)
+    # region: us-west-2
+    # s3Url: https://s3.us-west-2.amazonaws.com
+    
+    # For Google Cloud Storage (uncomment and modify if using GCS)
+    # region: us-central1
+    # s3Url: https://storage.googleapis.com
+---
+# Volume Snapshot Location (optional, for CSI snapshots)
+apiVersion: velero.io/v1
+kind: VolumeSnapshotLocation
+metadata:
+  name: default
+  namespace: velero
+spec:
+  provider: aws
+  config:
+    region: us-east-1
+    # Note: local-path-provisioner doesn't support CSI snapshots
+    # This is here for future compatibility with other storage classes
