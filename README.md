@@ -1,7 +1,7 @@
 <div align="center">
   <h3 align="center">Self-Hosted K8s Homelab</h3>
   <p align="center">
-    Production-ready Kubernetes homelab with GitOPS, databases, monitoring, and security
+    Self-hosted Kubernetes template for homelab, baremetal, or cloud deployments with essential infrastructure and applications
     <br />
     <a href="docs/"><strong>Explore the docs »</strong></a>
     <br />
@@ -19,24 +19,22 @@
 - [About](#about)
 - [Features](#features)
 - [Quick Start](#quick-start)
-- [Infrastructure](#infrastructure)
-- [Applications](#applications)
 - [Security Setup](#security-setup)
 - [Contributing](#contributing)
 - [License](#license)
 
 ## About
 
-A complete Kubernetes homelab template with production-ready infrastructure and applications. Built with GitOps principles using FluxCD, this template enables you to fork, customize, and deploy self-hosted services with enterprise-grade security and observability.
+A comprehensive Kubernetes template for deploying self-hosted services across homelab, baremetal, or cloud environments. Built with GitOps principles using FluxCD, this template provides essential infrastructure components and popular applications that you can fork, customize, and deploy to bootstrap your fresh cluster.
 
 ## Features
 
-✅ **Complete Infrastructure Stack**
-- 🔐 SSL certificates with cert-manager + Cloudflare
-- 🗄️ Database layer (PostgreSQL, MySQL, Redis)
-- 📊 Monitoring stack (Prometheus, Grafana, AlertManager)
+✅ **Essential Infrastructure Components**
+- 🔐 Automated SSL certificates with cert-manager + Cloudflare
+- 🗄️ Database services (PostgreSQL, MySQL, Redis)
+- 📊 Observability stack (Prometheus, Grafana, AlertManager, Loki)
 - 🛡️ Security policies with OPA Gatekeeper
-- 🔒 Sealed secrets for credential management
+- 🔒 Encrypted secrets management with SealedSecrets
 
 ✅ **GitOps-First Architecture**
 - 🚀 FluxCD for declarative deployments
@@ -44,12 +42,12 @@ A complete Kubernetes homelab template with production-ready infrastructure and 
 - 🔄 Multi-environment overlays (dev/prod)
 - 🔧 Mixed deployment patterns: GitOps + native Kubernetes manifests
 
-✅ **Production Applications**
+✅ **Self-Hosted Applications**
 - 🛠️ Development & collaboration tools
-- 📝 Productivity & automation platforms
+- 📝 Productivity & automation platforms  
 - 🔐 Security & identity management
 - 🚀 CI/CD & DevOps tooling
-- 🎯 Ready for media and monitoring apps
+- 🎯 Extensible for additional services
 
 ### Built With
 
@@ -97,21 +95,21 @@ A complete Kubernetes homelab template with production-ready infrastructure and 
    kubectl apply -k infrastructure/redis/overlays/prod/
    ```
 
-4. **Deploy applications** (examples)
+4. **Deploy applications** 
    ```bash
-   # Browse available applications
-   ls apps/*/
+   # Browse available categories and applications
+   ls apps/
    
-   # Deploy specific categories
-   kubectl apply -k apps/development/<app-name>/overlays/prod/
-   kubectl apply -k apps/productivity/<app-name>/overlays/prod/
-   kubectl apply -k apps/security/<app-name>/overlays/prod/
-   
-   # Deploy infrastructure services
+   # Deploy applications from any category
+   kubectl apply -k apps/<category>/<app-name>/overlays/prod/
    kubectl apply -k infrastructure/<service-name>/overlays/prod/
    ```
+   
+   > 📁 **Available Applications**: See [`apps/`](apps/) directory for current catalog
 
 > **📋 Note:** Many applications use FluxCD's HelmRepository and HelmRelease for automated Helm chart deployment. Ensure FluxCD is running before deploying Helm-based services.
+
+> **🚀 Advanced Option:** For automated GitOps deployment using FluxCD, see the [Advanced GitOps Guide](docs/advanced-gitops.md). This provides full automation where changes to Git automatically deploy to your cluster.
 
 > **⚠️ Important:** Configure secrets and SSL certificates before deploying applications. See [SECRETS_SETUP.md](SECRETS_SETUP.md) for detailed setup.
 
@@ -136,28 +134,6 @@ This repository uses **SealedSecrets** for secure credential management. When de
 
 > **🔐 Security Note:** Each cluster generates unique encryption keys. SealedSecrets from one cluster will not work on another.
 
-## Infrastructure
-
-### Core Components
-
-| Component | Purpose | Status |
-|-----------|---------|--------|
-| **cert-manager** | SSL certificates via Cloudflare | ✅ Ready |
-| **sealed-secrets** | Encrypted secrets management | ✅ Ready |
-| **metallb** | Load balancer for bare metal | ✅ Ready |
-| **ingress-nginx** | HTTP/HTTPS traffic routing | ✅ Ready |
-| **storage** | Local path provisioner | ✅ Ready |
-
-### Data & Observability
-
-| Component | Purpose | Status |
-|-----------|---------|--------|
-| **postgresql** | Primary database | ✅ Ready |
-| **mysql** | Secondary database | ✅ Ready |
-| **redis** | Cache and sessions | ✅ Ready |
-| **monitoring** | Prometheus + Grafana stack | ✅ Ready |
-| **gatekeeper** | Policy enforcement | ✅ Ready |
-
 ### Directory Structure
 
 ```
@@ -178,46 +154,6 @@ selfh-k8s/
 └── docs/                  # Setup guides & documentation
 ```
 
-## Applications
-
-> **🚀 Advanced Option:** For automated GitOps deployment using FluxCD, see the [Advanced GitOps Guide](docs/advanced-gitops.md). This provides full automation where changes to Git automatically deploy to your cluster.
-
-### Application Categories
-
-#### 🛠️ Development & Collaboration
-Code management, database design, documentation, and team collaboration tools
-
-#### 📝 Productivity & Automation  
-Workflow automation, business process management, communication APIs, and productivity suites
-
-#### 🔐 Security & Identity
-Password management, authentication services, and security monitoring tools
-
-#### 🚀 CI/CD & DevOps
-Continuous integration, deployment pipelines, and infrastructure automation
-
-#### 🎬 Media & Content
-Media servers, content management, and streaming services *(ready for deployment)*
-
-#### 📊 Monitoring & Observability
-Application monitoring, log aggregation, and alerting systems *(infrastructure included)*
-
-### Adding New Apps
-
-**Manual Deployment:**
-1. Create app structure: `apps/<category>/<app>/base/`
-2. Add Kubernetes manifests
-3. Create dev/prod overlays
-4. Configure ingress and secrets
-5. Deploy with `kubectl apply -k`
-
-**GitOps Deployment:**
-1. Follow steps 1-4 above
-2. Add Kustomization CRD to `cluster/apps/<category>.yaml`
-3. Commit to Git - FluxCD will automatically deploy
-
-**Contributing:**
-5. Submit pull request with your changes
 
 ## Contributing
 
