@@ -1,5 +1,5 @@
 <div align="center">
-  <h3 align="center">Self-Hosted K8s Homelab</h3>
+  <h3 align="center">Self-Hosted K8s</h3>
   <p align="center">
     Self-hosted Kubernetes template for homelab, baremetal, or cloud deployments with essential infrastructure and applications
     <br />
